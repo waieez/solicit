@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `HttpConnection` struct in crate `solicit`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, HttpConnection">
+
+    <title>solicit::http::connection::HttpConnection - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../../main.css">
+
+    
+    
+</head>
+<body class="rustdoc">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <section class="sidebar">
+        
+        <p class='location'><a href='../../index.html'>solicit</a>::<wbr><a href='../index.html'>http</a>::<wbr><a href='index.html'>connection</a></p><script>window.sidebarCurrent = {name: 'HttpConnection', ty: 'struct', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+    </section>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press 'S' to search, '?' for more options..."
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content struct">
+<h1 class='fqn'><span class='in-band'>Struct <a href='../../index.html'>solicit</a>::<wbr><a href='../index.html'>http</a>::<wbr><a href='index.html'>connection</a>::<wbr><a class='struct' href=''>HttpConnection</a><wbr></span><span class='out-of-band'><span id='render-detail'>
+            <a id="collapse-all" href="#">[-]</a>&nbsp;<a id="expand-all" href="#">[+]</a>
+        </span><a id='src-4325' href='../../../src/solicit/http/connection.rs.html#59-66'>[src]</a></span></h1>
+<pre class='rust struct'>pub struct HttpConnection&lt;S&gt; <span class='where'>where S: <a class='trait' href='../../../solicit/http/transport/trait.TransportStream.html' title='solicit::http::transport::TransportStream'>TransportStream</a></span> {
+    pub scheme: <a class='enum' href='../../../solicit/http/enum.HttpScheme.html' title='solicit::http::HttpScheme'>HttpScheme</a>,
+    pub host: <a class='struct' href='http://doc.rust-lang.org/nightly/collections/string/struct.String.html' title='collections::string::String'>String</a>,
+    // some fields omitted
+}</pre><div class='docblock'><p>The struct implements the HTTP/2 connection level logic.</p>
+
+<p>It provides an API for writing and reading HTTP/2 frames. It also takes
+care to validate the received frames.</p>
+</div><h2 class='fields'>Fields</h2>
+<table><tr><td id='structfield.scheme'><a class='stability Unmarked' title='No stability level'></a><code>scheme</code></td><td><div class='docblock'><p>The scheme of the connection</p>
+</div></td></tr><tr><td id='structfield.host'><a class='stability Unmarked' title='No stability level'></a><code>host</code></td><td><div class='docblock'><p>The host to which the connection is established</p>
+</div></td></tr></table><h2 id='methods'>Methods</h2><h3 class='impl'><a class='stability Unmarked' title='No stability level'></a><code>impl&lt;S&gt; <a class='struct' href='../../../solicit/http/connection/struct.HttpConnection.html' title='solicit::http::connection::HttpConnection'>HttpConnection</a>&lt;S&gt; <span class='where'>where S: <a class='trait' href='../../../solicit/http/transport/trait.TransportStream.html' title='solicit::http::transport::TransportStream'>TransportStream</a></span></code></h3><div class='impl-items'><h4 id='method.new' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.new' class='fnname'>new</a>&lt;'a&gt;(stream: S, scheme: <a class='enum' href='../../../solicit/http/enum.HttpScheme.html' title='solicit::http::HttpScheme'>HttpScheme</a>, host: <a class='enum' href='http://doc.rust-lang.org/nightly/collections/borrow/enum.Cow.html' title='collections::borrow::Cow'>Cow</a>&lt;'a, <a href='http://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a>&gt;) -&gt; <a class='struct' href='../../../solicit/http/connection/struct.HttpConnection.html' title='solicit::http::connection::HttpConnection'>HttpConnection</a>&lt;S&gt;</code></h4>
+<div class='docblock'><p>Creates a new <code>HttpConnection</code> that will use the given stream as its
+underlying transport layer.</p>
+
+<p>The host to which the connection is established, as well as the connection
+scheme are provided.</p>
+</div><h4 id='method.send_frame' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.send_frame' class='fnname'>send_frame</a>&lt;F: <a class='trait' href='../../../solicit/http/frame/trait.Frame.html' title='solicit::http::frame::Frame'>Frame</a>&gt;(&amp;mut self, frame: F) -&gt; <a class='type' href='../../../solicit/http/type.HttpResult.html' title='solicit::http::HttpResult'>HttpResult</a>&lt;<a href='http://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>&gt;</code></h4>
+<div class='docblock'><p>Sends the given frame to the peer.</p>
+
+<h1 id="returns" class='section-header'><a
+                           href="#returns">Returns</a></h1>
+<p>Any IO errors raised by the underlying transport layer are wrapped in a
+<code>HttpError::IoError</code> variant and propagated upwards.</p>
+
+<p>If the frame is successfully written, returns a unit Ok (<code>Ok(())</code>).</p>
+</div><h4 id='method.recv_frame' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.recv_frame' class='fnname'>recv_frame</a>(&amp;mut self) -&gt; <a class='type' href='../../../solicit/http/type.HttpResult.html' title='solicit::http::HttpResult'>HttpResult</a>&lt;<a class='enum' href='../../../solicit/http/connection/enum.HttpFrame.html' title='solicit::http::connection::HttpFrame'>HttpFrame</a>&gt;</code></h4>
+<div class='docblock'><p>Reads a new frame from the transport layer.</p>
+
+<h1 id="returns" class='section-header'><a
+                           href="#returns">Returns</a></h1>
+<p>Any IO errors raised by the underlying transport layer are wrapped in a
+<code>HttpError::IoError</code> variant and propagated upwards.</p>
+
+<p>If the frame type is unknown the <code>HttpError::UnknownFrameType</code> variant
+is returned.</p>
+
+<p>If the frame type is recognized, but the frame cannot be successfully
+decoded, the <code>HttpError::InvalidFrame</code> variant is returned. For now,
+invalid frames are not further handled by informing the peer (e.g.
+sending PROTOCOL_ERROR) nor can the exact reason behind failing to
+decode the frame be extracted.</p>
+
+<p>If a frame is successfully read and parsed, returns the frame wrapped
+in the appropriate variant of the <code>HttpFrame</code> enum.</p>
+</div></div></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <div id="help" class="hidden">
+        <div class="shortcuts">
+            <h1>Keyboard shortcuts</h1>
+            <dl>
+                <dt>?</dt>
+                <dd>Show this help dialog</dd>
+                <dt>S</dt>
+                <dd>Focus the search field</dd>
+                <dt>&larrb;</dt>
+                <dd>Move up in search results</dd>
+                <dt>&rarrb;</dt>
+                <dd>Move down in search results</dd>
+                <dt>&#9166;</dt>
+                <dd>Go to active search result</dd>
+            </dl>
+        </div>
+        <div class="infos">
+            <h1>Search tricks</h1>
+            <p>
+                Prefix searches with a type followed by a colon (e.g.
+                <code>fn:</code>) to restrict the search to a given type.
+            </p>
+            <p>
+                Accepted types are: <code>fn</code>, <code>mod</code>,
+                <code>struct</code>, <code>enum</code>,
+                <code>trait</code>, <code>typedef</code> (or
+                <code>tdef</code>).
+            </p>
+        </div>
+    </div>
+
+    
+
+    <script>
+        window.rootPath = "../../../";
+        window.currentCrate = "solicit";
+        window.playgroundUrl = "";
+    </script>
+    <script src="../../../jquery.js"></script>
+    <script src="../../../main.js"></script>
+    
+    <script async src="../../../search-index.js"></script>
+</body>
+</html>

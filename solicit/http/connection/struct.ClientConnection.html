@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `ClientConnection` struct in crate `solicit`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, ClientConnection">
+
+    <title>solicit::http::connection::ClientConnection - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../../main.css">
+
+    
+    
+</head>
+<body class="rustdoc">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <section class="sidebar">
+        
+        <p class='location'><a href='../../index.html'>solicit</a>::<wbr><a href='../index.html'>http</a>::<wbr><a href='index.html'>connection</a></p><script>window.sidebarCurrent = {name: 'ClientConnection', ty: 'struct', relpath: ''};</script><script defer src="sidebar-items.js"></script>
+    </section>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press 'S' to search, '?' for more options..."
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content struct">
+<h1 class='fqn'><span class='in-band'>Struct <a href='../../index.html'>solicit</a>::<wbr><a href='../index.html'>http</a>::<wbr><a href='index.html'>connection</a>::<wbr><a class='struct' href=''>ClientConnection</a><wbr></span><span class='out-of-band'><span id='render-detail'>
+            <a id="collapse-all" href="#">[-]</a>&nbsp;<a id="expand-all" href="#">[+]</a>
+        </span><a id='src-5508' href='../../../src/solicit/http/connection.rs.html#377-390'>[src]</a></span></h1>
+<pre class='rust struct'>pub struct ClientConnection&lt;TS, S&gt; <span class='where'>where TS: <a class='trait' href='../../../solicit/http/transport/trait.TransportStream.html' title='solicit::http::transport::TransportStream'>TransportStream</a>, S: <a class='trait' href='../../../solicit/http/session/trait.Session.html' title='solicit::http::session::Session'>Session</a></span> {
+    pub session: S,
+    // some fields omitted
+}</pre><div class='docblock'><p>A struct implementing the client side of an HTTP/2 connection.</p>
+
+<p>It builds on top of an <code>HttpConnection</code> and provides additional methods
+that are only used by clients.</p>
+</div><h2 class='fields'>Fields</h2>
+<table><tr><td id='structfield.session'><a class='stability Unmarked' title='No stability level'></a><code>session</code></td><td><div class='docblock'><p>The <code>Session</code> associated with this connection. It is essentially a set
+of callbacks that are triggered by the connection when different states
+in the HTTP/2 communication arise.</p>
+</div></td></tr></table><h2 id='methods'>Methods</h2><h3 class='impl'><a class='stability Unmarked' title='No stability level'></a><code>impl&lt;TS, S&gt; <a class='struct' href='../../../solicit/http/connection/struct.ClientConnection.html' title='solicit::http::connection::ClientConnection'>ClientConnection</a>&lt;TS, S&gt; <span class='where'>where TS: <a class='trait' href='../../../solicit/http/transport/trait.TransportStream.html' title='solicit::http::transport::TransportStream'>TransportStream</a>, S: <a class='trait' href='../../../solicit/http/session/trait.Session.html' title='solicit::http::session::Session'>Session</a></span></code></h3><div class='impl-items'><h4 id='method.with_connection' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.with_connection' class='fnname'>with_connection</a>(conn: <a class='struct' href='../../../solicit/http/connection/struct.HttpConnection.html' title='solicit::http::connection::HttpConnection'>HttpConnection</a>&lt;TS&gt;, session: S) -&gt; <a class='struct' href='../../../solicit/http/connection/struct.ClientConnection.html' title='solicit::http::connection::ClientConnection'>ClientConnection</a>&lt;TS, S&gt;</code></h4>
+<div class='docblock'><p>Creates a new <code>ClientConnection</code> that will use the given <code>HttpConnection</code>
+for all its underlying HTTP/2 communication.</p>
+</div><h4 id='method.host' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.host' class='fnname'>host</a>(&amp;self) -&gt; &amp;<a href='http://doc.rust-lang.org/nightly/std/primitive.str.html'>str</a></code></h4>
+<div class='docblock'><p>Returns the host to which the underlying <code>HttpConnection</code> is established.</p>
+</div><h4 id='method.scheme' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.scheme' class='fnname'>scheme</a>(&amp;self) -&gt; <a class='enum' href='../../../solicit/http/enum.HttpScheme.html' title='solicit::http::HttpScheme'>HttpScheme</a></code></h4>
+<div class='docblock'><p>Returns the scheme of the underlying <code>HttpConnection</code>.</p>
+</div><h4 id='method.init' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.init' class='fnname'>init</a>(&amp;mut self) -&gt; <a class='type' href='../../../solicit/http/type.HttpResult.html' title='solicit::http::HttpResult'>HttpResult</a>&lt;<a href='http://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>&gt;</code></h4>
+<div class='docblock'><p>Performs the initialization of the <code>ClientConnection</code>.</p>
+
+<p>Sends the client preface, followed by validating the receipt of the
+server preface.</p>
+</div><h4 id='method.send_request' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.send_request' class='fnname'>send_request</a>(&amp;mut self, req: <a class='struct' href='../../../solicit/http/struct.Request.html' title='solicit::http::Request'>Request</a>) -&gt; <a class='type' href='../../../solicit/http/type.HttpResult.html' title='solicit::http::HttpResult'>HttpResult</a>&lt;<a href='http://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>&gt;</code></h4>
+<div class='docblock'><p>A method that sends the given <code>Request</code> to the server.</p>
+
+<p>The method blocks until the entire request has been sent.</p>
+
+<p>All errors are propagated.</p>
+
+<h1 id="note" class='section-header'><a
+                           href="#note">Note</a></h1>
+<p>Request body is ignored for now.</p>
+</div><h4 id='method.handle_next_frame' class='method'><a class='stability Unmarked' title='No stability level'></a><code>fn <a href='#method.handle_next_frame' class='fnname'>handle_next_frame</a>(&amp;mut self) -&gt; <a class='type' href='../../../solicit/http/type.HttpResult.html' title='solicit::http::HttpResult'>HttpResult</a>&lt;<a href='http://doc.rust-lang.org/nightly/std/primitive.tuple.html'>()</a>&gt;</code></h4>
+<div class='docblock'><p>Fully handle the next incoming frame, blocking to read it from the
+underlying transport stream if not available yet.</p>
+
+<p>All communication errors are propagated.</p>
+</div></div></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <div id="help" class="hidden">
+        <div class="shortcuts">
+            <h1>Keyboard shortcuts</h1>
+            <dl>
+                <dt>?</dt>
+                <dd>Show this help dialog</dd>
+                <dt>S</dt>
+                <dd>Focus the search field</dd>
+                <dt>&larrb;</dt>
+                <dd>Move up in search results</dd>
+                <dt>&rarrb;</dt>
+                <dd>Move down in search results</dd>
+                <dt>&#9166;</dt>
+                <dd>Go to active search result</dd>
+            </dl>
+        </div>
+        <div class="infos">
+            <h1>Search tricks</h1>
+            <p>
+                Prefix searches with a type followed by a colon (e.g.
+                <code>fn:</code>) to restrict the search to a given type.
+            </p>
+            <p>
+                Accepted types are: <code>fn</code>, <code>mod</code>,
+                <code>struct</code>, <code>enum</code>,
+                <code>trait</code>, <code>typedef</code> (or
+                <code>tdef</code>).
+            </p>
+        </div>
+    </div>
+
+    
+
+    <script>
+        window.rootPath = "../../../";
+        window.currentCrate = "solicit";
+        window.playgroundUrl = "";
+    </script>
+    <script src="../../../jquery.js"></script>
+    <script src="../../../main.js"></script>
+    
+    <script async src="../../../search-index.js"></script>
+</body>
+</html>
