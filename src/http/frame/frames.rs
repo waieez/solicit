@@ -186,10 +186,8 @@ mod tests {
         unpack_header,
         pack_header,
         RawFrame,
-        FrameHeader,
-        Frame,
     };
-    use super::super::testconfig::*;
+
 
     /// Tests that the `unpack_header` function correctly returns the
     /// components of HTTP/2 frame headers.
