@@ -50,7 +50,7 @@ impl PingFrame {
     pub fn new_ack() -> PingFrame {
         PingFrame {
             data: Vec::new(),
-            flag: PingFlag::Ack.bitmask(),
+            flags: PingFlag::Ack.bitmask(),
         }
     }
 
@@ -82,6 +82,7 @@ impl PingFrame {
         if payload.len() != 8 {
             return None;
         }
+        let data = payload;
 
         Some(data.to_vec())
     }
@@ -90,7 +91,7 @@ impl PingFrame {
 impl Frame for PingFrame {
     /// The type that represents the flags that the particular `Frame` can take.
     /// This makes sure that only valid `Flag`s are used with each `Frame`.
-    type FlagType = AckFlag;
+    type FlagType = PingFlag;
 
     /// Creates a new `PingFrame` with the given `RawFrame` (i.e. header and payload),
     /// if possible.
@@ -132,6 +133,17 @@ impl Frame for PingFrame {
                 });
             }
         }
+
+        match PingFrame::parse_payload(&raw_frame.payload) {
+            Some(data) => {
+                // The data extracted
+                Some(PingFrame {
+                    flags: flags,
+                    data: data,
+                })
+            }
+            None => None,
+        }
     }
 
     /// Tests if the given flag is set for the frame.
@@ -148,7 +160,7 @@ impl Frame for PingFrame {
 
     /// Returns a `FrameHeader` based on the current state of the `Frame`.
     fn get_header(&self) -> FrameHeader {
-        (self.payload_len(). 0x6, self.flags, 0)
+        (self.payload_len(), 0x6, self.flags, 0)
     }
 
     /// Sets the given flag for the frame.
@@ -162,15 +174,22 @@ impl Frame for PingFrame {
         // First the header
         buf.extend(pack_header(&self.get_header()).to_vec().into_iter());
         // now the body
-        for data in self.data.iter() {
-            buf.extend(data.serialize().to_vec().into_iter());
-        }
+        buf.extend(self.data.clone().into_iter());
 
         buf
     }
 
-
 }
+
+//#[cfg(test)]
+//mod tests {
+//    use super::super::frames::*;
+//    use super::super::testconfig::*;
+//    use super::*;
+//
+//    // Tests that the `PingFrame` struct
+//    #]
+//}
 
 
 
