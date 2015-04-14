@@ -181,15 +181,75 @@ impl Frame for PingFrame {
 
 }
 
-//#[cfg(test)]
-//mod tests {
-//    use super::super::frames::*;
-//    use super::super::testconfig::*;
-//    use super::*;
-//
-//    // Tests that the `PingFrame` struct
-//    #]
-//}
+#[cfg(test)]
+mod tests {
+    use super::super::frames::*;
+    use super::super::testconfig::*;
+    use super::*;
+
+    /// Tests that the `PingFrame` correctly handles a PING frame with
+    /// no ACK flag and a payload
+    #[test]
+    fn test_ping_frame_parse_no_ack() {
+        let payload = [0, 0, 0, 0, 1, 0, 0, 0];
+        // A header with no ACK flag
+        let header = (payload.len() as u32, 6, 0, 0);
+
+        let frame = build_test_frame::<PingFrame>(&header, &payload);
+
+        assert_eq!(frame.get_header(), header);
+    }
+
+    /// Tests that the `PingFrame` correctly handles a PING frame which
+    /// was not associated to stream 0 by returning an error.
+    #[test]
+    fn test_ping_frame_parse_not_stream_zero() {
+        let payload = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        // Header indicates that it is associated to stream 1
+        let header = (payload.len() as u32, 6, 0, 1);
+
+        let frame: Option<PingFrame> = Frame::from_raw(
+            RawFrame::with_payload(header, payload));
+
+        assert!(frame.is_none());
+    }
+
+    /// Tests that the `PingFrame` correctly handles a PING frame which
+    /// does not have a payload of 8 bytes
+    #[test]
+    fn test_ping_frame_parse_not_eight_bytes() {
+        let payload = vec![2, 4, 6, 8];
+
+        let header = (payload.len() as u32, 6, 0, 0);
+
+        let frame: Option<PingFrame> = Frame::from_raw(
+            RawFrame::with_payload(header, payload)
+        );
+
+        assert!(frame.is_none());
+    }
+
+    /// Tests that a `PingFrame` gets correctly serialized when it contains
+    /// a payload and ACK.
+    #[test]
+    fn test_ping_frame_serialize_payload_ack() {
+        let mut frame = PingFrame::new_ack();
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        frame.data = data.clone();
+        let expected = {
+            let headers = pack_header(&(8, 6, 1, 0));
+            let mut res: Vec<u8> = Vec::new();
+            res.extend(headers.to_vec().into_iter());
+            res.extend(data.into_iter());
+
+            res
+        };
+
+        let serialized = frame.serialize();
+
+        assert_eq!(serialized, expected);
+    }
+}
 
 
 
