@@ -316,6 +316,14 @@ impl Frame for HeadersFrame {
     }
 }
 
+/// A struct representing the CONTINUATION frame for HTTP/2, as defined in the
+/// HTTP/2 spec, section 6.10.
+pub struct ContinuationFrame {
+    /// The header block fragment bytes stored within the frame.
+    pub header_fragment: Vec<u8>,
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::super::frames::{Frame, RawFrame, pack_header};
@@ -413,7 +421,7 @@ mod tests {
 
         let frame: Option<HeadersFrame> = Frame::from_raw(
             RawFrame::with_payload(header, payload));
-        
+
         assert!(frame.is_none());
     }
 
@@ -427,7 +435,7 @@ mod tests {
 
         let frame: Option<HeadersFrame> = Frame::from_raw(
             RawFrame::with_payload(header, payload));
-        
+
         assert!(frame.is_none());
     }
 
