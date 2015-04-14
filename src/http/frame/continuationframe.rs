@@ -57,7 +57,6 @@ impl ContinuationFrame {
         self.is_set(ContinuationFlag::EndHeaders)
     }
 
-
     /// Returns the length of the payload of the current frame, including any
     /// possible padding in the number of bytes.
     fn payload_len(&self) -> u32 {
@@ -104,5 +103,38 @@ impl Frame for ContinuationFrame {
             stream_id: stream_id,
             flags: flags
         })
+    }
+
+    /// Tests if the given flag is set for the frame.
+    fn is_set(&self, flag: ContinuationFlag) -> bool {
+        (self.flags & flag.bitmask()) != 0
+    }
+
+    // Returns the `StreamId` of the stream to which the frame is associated.
+    ///
+    /// A `SettingsFrame` always has to be associated to stream `0`.
+    fn get_stream_id(&self) -> StreamId {
+        self.stream_id
+    }
+
+    /// Returns a `FrameHeader` based on the current state of the `Frame`.
+    fn get_header(&self) -> FrameHeader {
+        (self.payload_len(), 0x9, self.flags, self.stream_id)
+    }
+
+    /// Sets the given flag for the frame.
+    fn set_flag(&mut self, flag: ContinuationFlag) {
+        self.flags |= flag.bitmask();
+    }
+
+    /// Returns a `Vec` with the serialized representation of the frame.
+    fn serialize(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(self.payload_len() as usize);
+        // First the header...
+        buf.extend(pack_header(&self.get_header()).to_vec().into_iter());
+        // Now the actual headers fragment
+        buf.extend(self.header_fragment.clone().into_iter());
+
+        buf
     }
 }
