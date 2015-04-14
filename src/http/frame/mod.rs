@@ -29,24 +29,33 @@ pub use self::frames::{
     RawFrame,
     FrameHeader
 };
+
 pub use self::dataframe::{
     DataFlag,
     DataFrame,
 };
+
 pub use self::settingsframe::{
     HttpSetting,
     SettingsFlag,
-    SettingsFrame
+    SettingsFrame,
 };
+
 pub use self::headersframe::{
     HeadersFlag,
     StreamDependency,
-    HeadersFrame
+    HeadersFrame,
 };
+
 pub use self::pingframe::{
     PingFlag,
-    PingFrame
+    PingFrame,
 };
+
+pub use self::continuationframe::{
+    ContinuationFlag,
+    ContinuationFrame,
+}
 
 pub mod frames;
 mod test;
@@ -54,3 +63,4 @@ pub mod dataframe;
 pub mod settingsframe;
 pub mod headersframe;
 pub mod pingframe;
+pub mod continuationframe;

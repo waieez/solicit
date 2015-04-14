@@ -5,8 +5,10 @@ version = "0.0.1"
 authors = ["Marko Lalic <marko.lalic@gmail.com>"]
 
 [dependencies]
-hpack = "*"
 log = "^0.3"
+
+[dependencies.hpack]
+git = "https://github.com/mlalic/hpack-rs.git"
 
 [dependencies.openssl]
 version = "*"
