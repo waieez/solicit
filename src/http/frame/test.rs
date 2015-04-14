@@ -1,4 +1,4 @@
-use super::frames::*;
+use super::{Frame, RawFrame, FrameHeader};
 
 /// Builds a test frame of the given type with the given header and
 /// payload, by using the `Frame::from_raw` method.
