@@ -23,9 +23,11 @@ pub use self::frames::*;
 pub use self::dataframe::*;
 pub use self::settingsframe::*;
 pub use self::headersframe::*;
+pub use self::pingframe::*;
 
 pub mod frames;
 mod testconfig;
 pub mod dataframe;
 pub mod settingsframe;
 pub mod headersframe;
+pub mod pingframe;
