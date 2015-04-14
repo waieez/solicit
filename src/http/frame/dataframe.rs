@@ -1,5 +1,12 @@
 use super::super::StreamId;
-use super::frames::*;
+use super::frames::{
+    Frame,
+    Flag,
+    parse_padded_payload,
+    pack_header,
+    RawFrame,
+    FrameHeader
+};
 
 /// An enum representing the flags that a `DataFrame` can have.
 /// The integer representation associated to each variant is that flag's
@@ -199,9 +206,9 @@ impl Frame for DataFrame {
 
 #[cfg(test)]
 mod tests {
-    use super::super::frames::*;
-    use super::super::testconfig::*;
-    use super::*;
+    use super::super::frames::{Frame, RawFrame, pack_header};
+    use super::super::test::{build_test_frame, build_padded_frame_payload};
+    use super::{DataFrame, DataFlag};
     /// Tests that the `DataFrame` struct correctly interprets a DATA frame
     /// with no padding set.
     #[test]

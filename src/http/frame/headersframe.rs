@@ -1,7 +1,12 @@
-//! The module contains the implementation of HTTP/2 frames.
-
 use super::super::StreamId;
-use super::frames::*;
+use super::frames::{
+    Frame,
+    Flag,
+    parse_padded_payload,
+    pack_header,
+    RawFrame,
+    FrameHeader
+};
 
 /// An enum representing the flags that a `HeadersFrame` can have.
 /// The integer representation associated to each variant is that flag's
@@ -313,9 +318,9 @@ impl Frame for HeadersFrame {
 
 #[cfg(test)]
 mod tests {
-    use super::super::frames::*;
-    use super::super::testconfig::*;
-    use super::*;
+    use super::super::frames::{Frame, RawFrame, pack_header};
+    use super::super::test::{build_test_frame, build_padded_frame_payload};
+    use super::{HeadersFrame, HeadersFlag, StreamDependency};
 
     /// Tests that a simple HEADERS frame is correctly parsed. The frame does
     /// not contain any padding nor priority information.

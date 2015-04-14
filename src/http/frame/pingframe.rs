@@ -1,5 +1,11 @@
 use super::super::StreamId;
-use super::frames::*;
+use super::frames::{
+    Frame,
+    Flag,
+    RawFrame,
+    FrameHeader,
+    pack_header
+};
 
 /// An enum representing the flags that a `PingFrame` can have.
 /// The integer representation associated to each variant is that flag's
@@ -183,9 +189,9 @@ impl Frame for PingFrame {
 
 #[cfg(test)]
 mod tests {
-    use super::super::frames::*;
-    use super::super::testconfig::*;
-    use super::*;
+    use super::super::frames::{Frame, RawFrame, pack_header};
+    use super::super::test::{build_test_frame};
+    use super::{PingFlag, PingFrame};
 
     /// Tests that the `PingFrame` correctly handles a PING frame with
     /// no ACK flag and a payload

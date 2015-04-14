@@ -1,3 +1,5 @@
+//! The module contains the implementation of HTTP/2 frames.
+
 /// A helper macro that unpacks a sequence of 4 bytes found in the buffer with
 /// the given identifier, starting at the given offset, into the given integer
 /// type. Obviously, the integer type should be able to support at least 4
@@ -18,15 +20,36 @@ macro_rules! unpack_octets_4 {
     );
 }
 
-pub use self::frames::*;
-//use self::testconfig::*;
-pub use self::dataframe::*;
-pub use self::settingsframe::*;
-pub use self::headersframe::*;
-pub use self::pingframe::*;
+pub use self::frames::{
+    Frame,
+    Flag,
+    parse_padded_payload,
+    unpack_header,
+    pack_header,
+    RawFrame,
+    FrameHeader
+};
+pub use self::dataframe::{
+    DataFlag,
+    DataFrame,
+};
+pub use self::settingsframe::{
+    HttpSetting,
+    SettingsFlag,
+    SettingsFrame
+};
+pub use self::headersframe::{
+    HeadersFlag,
+    StreamDependency,
+    HeadersFrame
+};
+pub use self::pingframe::{
+    PingFlag,
+    PingFrame
+};
 
 pub mod frames;
-mod testconfig;
+mod test;
 pub mod dataframe;
 pub mod settingsframe;
 pub mod headersframe;

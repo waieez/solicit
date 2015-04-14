@@ -1,5 +1,11 @@
 use super::super::StreamId;
-use super::frames::*;
+use super::frames::{
+    Frame,
+    Flag,
+    RawFrame,
+    FrameHeader,
+    pack_header
+};
 
 /// An enum that lists all valid settings that can be sent in a SETTINGS
 /// frame.
@@ -301,9 +307,9 @@ impl Frame for SettingsFrame {
 
 #[cfg(test)]
 mod tests {
-    use super::super::frames::*;
-    use super::super::testconfig::*;
-    use super::*;
+    use super::super::frames::{Frame, RawFrame, pack_header};
+    use super::super::test::{build_test_frame};
+    use super::{HttpSetting, SettingsFrame};
 
     /// Tests that the `HttpSetting::parse_setting` method correctly creates
     /// settings from raw bytes.
