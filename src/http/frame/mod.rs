@@ -43,9 +43,14 @@ pub use self::headersframe::{
     StreamDependency,
     HeadersFrame
 };
+pub use self::pingframe::{
+    PingFlag,
+    PingFrame
+};
 
 pub mod frames;
 mod test;
 pub mod dataframe;
 pub mod settingsframe;
 pub mod headersframe;
+pub mod pingframe;
