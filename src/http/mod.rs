@@ -42,6 +42,8 @@ pub enum HttpError {
     UnknownStreamId,
     UnableToConnect,
     MalformedResponse,
+    StreamClosed,
+    ProtocolError
 }
 
 /// Implement the trait that allows us to automatically convert `io::Error`s

@@ -118,6 +118,9 @@ impl<S> HttpConnection<S> where S: TransportStream {
         let payload = try!(self.read_payload(header.0));
         let raw_frame = RawFrame::with_payload(header, payload);
 
+        // Flow: Pass raw frame into state manager along with parser
+        // returns HttpResult of type Frame
+
         // TODO: The reason behind being unable to decode the frame should be
         //       extracted and an appropriate connection-level action taken
         //       (e.g. responding with a PROTOCOL_ERROR).
@@ -523,6 +526,8 @@ impl<TS, S> ClientConnection<TS, S> where TS: TransportStream, S: Session {
 
         self.handle_frame(frame)
     }
+
+    // Flow: Flows into statemanager
 
     /// Private helper method that actually handles a received frame.
     fn handle_frame(&mut self, frame: HttpFrame) -> HttpResult<()> {

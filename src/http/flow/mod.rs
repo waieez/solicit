@@ -47,73 +47,10 @@
 //    ES: END_STREAM flag
 //    R:  RST_STREAM frame
 
-// States:
-// Idle
-// SEND/REC: HEADERS --> Open
-// SEND: PP (on another stream), reserves stream (send:local, recv:remote)
-
-// Reserved Local
-// Associated with open stream initiated by remote peer
-// Send: HEADERS --> half closed (remote)
-// Send: Either endpoint RST_STREAM --> Closed
-// May RECV: PRIORITY/WINDOW_UPDATE
-
-// Reserved Remote
-// Reserved by remote peer
-// Recv: HEADERS --> Half Closed
-// Either endpoint Send: RST_STREAM --> Closed
-// May Recv: PRIORITY/WINDOW_UPDATE
-
-// Half Closed Local (READING)
-// SEND: WINDOW_UPDATE, PRIORITY, RST Stream
-// End_STREAM flag or RST_STREAM --> Close
-// Can Recv any frame
-
-// Half Closed Remote (Writing)
-// no longer used by peer to send frames, no longer obligated to maintain reciever flow control window
-// Error w/ STREAM_CLOSED when when recv frames not WINDOW_UPDATE, PRIORITY, RST_STREAM
-
-// Closed
-// SEND: PRIORITY, else ERR
-// RECV: After RECV RST_STREAM or End_STREAM flag, if RECV anything ERR STREAM_CLOSED
-
-//   Exceptions: 
-//   WINDOW_UPDATE or RST_STREAM
-//     can RECV: WINDOW_UPDATE or RST_STREAM for a short period after DATA or HEADERS frame containing an END_STREAM flag is sent. 
-//     Until the remote peer receives and processes RST_STREAM or the frame bearing the END_STREAM flag, it might send frames of these types. 
-//     Endpoints MUST ignore WINDOW_UPDATE or RST_STREAM frames received in this state, 
-//     though endpoints MAY choose to treat frames that arrive a significant time after sending END_STREAM as a connection error (Section 5.4.1) of type PROTOCOL_ERROR.
-//   PRIORITY
-//     can SEND: PRIORITY to prioritize streams dependant on closed stream.
-//     should process PRIORITY frame, though can be ignored if stream removed from dep tree.
-//   If Stream becomes closed after sending an RST_STREAM frame, can have a window for ignoring additional recived frames. after which should ERR.
-//   Flow controlled frames (i.e., DATA) received after sending RST_STREAM are counted toward the connection flow control window. 
-//     Even though these frames might be ignored, because they are sent before the sender receives the RST_STREAM, the sender will consider the frames to count against the flow control window.
-//   PUSH_PROMISE
-//     An endpoint might receive a PUSH_PROMISE frame after it sends RST_STREAM. 
-//     PUSH_PROMISE causes a stream to become "reserved" even if the associated stream has been reset. 
-//     Therefore, a RST_STREAM is needed to close an unwanted promised stream.
-
-// STREAM_ID: u31
-// init by Client: Odd
-// init by Server: Even
-
-// Stream id must be increasing, respond to unexpected id's with PROTOCOL_ERROR
-
-// Stream Concurrency
-// Limit the max streams it peer can open using Settings Frame
-// Open/Half Closed count towards max. reserved don't
-// if endpoint recieves HEADERS frame that goes over max, PROTOCOL_ERROR or REFUSED_STREAM.
-// Can reduce max streams. but must either close streams or wait for them to close.
-
-
-
-
 // Flow Control Scheme
 // Scheme Ensures stream on same conn do not destrctively interfere.
 // Used for individual streams and for connection as a whole.
 // Req: Window Update
-
 
 // Flow Control Principles
 
@@ -139,9 +76,6 @@
 // Appropriate Use of Flow Control
 //  If not required, advertise a flow control window of the maximum size (2^31-1)
 //  Flow control to limit memory use. However lead to suboptimal use of network resources.
-
-
-
 
 // Stream Priority
 
