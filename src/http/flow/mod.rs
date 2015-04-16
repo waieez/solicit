@@ -104,4 +104,6 @@
 // Prioritization State Management
 // ???
 
+#[allow(unused_variables)]
+#[allow(dead_code)] // enabled for terminal legibility
 pub mod streamstate;
