@@ -127,19 +127,23 @@ impl StreamManager {
         self.streams.get_mut(&stream_id)
     }
 
-    // fn open_idle?
+    fn open_idle (&mut self, stream_id: u32, by_peer: bool) {// maybe by_peer defaults to false?
+        debug!("opening stream {:?}", &stream_id);
+        //clients can only open odd streams, servers even.
+        //potentially create streams using this api.
+        if self.check_valid_open_request(stream_id, by_peer) { // checked before already in check_valid_frame
+            self.streams.insert(stream_id, StreamStatus::new());
+        }
+    }
 
     // API to manually set the state of a stream to be open (if stream id supplied is valid)
     // Streams opened by peers use transition_state
     fn open (&mut self, stream_id: u32, by_peer: bool) {// maybe defaults to false?
-        debug!("opening stream {:?}", &stream_id);
-        //clients can only open odd streams, servers even.
-        //potentially create streams using this api.
-        if self.check_valid_open_request(stream_id, by_peer) {
-            self.streams.insert(stream_id, StreamStatus::new());
-            self.set_state(&stream_id, StreamStates::Open);
-        }
+        self.open_idle(stream_id, by_peer);
+        self.set_state(&stream_id, StreamStates::Open);
     }
+
+    // fn open_half_closed?
 
     // peer argument should be more descriptive
     fn check_valid_open_request (&mut self, stream_id: u32, by_peer: bool) -> bool {
@@ -236,9 +240,12 @@ impl StreamManager {
     //     let flag = frame.header.2;
     //     let stream_id = frame.header.3;
 
-    //     // first check if state is idle
-    //     // if state is idle, force open (currently doesnt default to idle)
-    //     if self.streams[&stream_id].state == StreamStates::Idle
+    //     // first check if state is idle (rather, if its in the hashmap)
+    //     // if state is idle, force open 
+    //     match self.get_stream_status(&stream_id) {
+    //         None => self.open(),
+    //         Some(_status) => _status
+    //     };
 
     //     //todo: refactor to use headersframe::headersflag
     //     match by_peer {
