@@ -366,8 +366,9 @@ impl StreamManager {
         let stream_id = frame.header.3;
 
         // If the frame is valid, (new stream?, continuation?, otherwise still valid?)
-        let is_valid = self.check_valid_frame(&frame); //by_peer?
+        let is_valid = self.check_valid_frame(&frame, true); //by_peer?
 
+        println!("is the frame valid? {:?}", is_valid);
 
         if !is_valid {
             //return an error
@@ -385,7 +386,7 @@ impl StreamManager {
                 },
                 //Header
                 0x1 => {
-                    self.handle_header(&frame, true)
+                    self.handle_header(&frame, true);
                 },
                 //Priority
                 0x2 => {
@@ -429,7 +430,7 @@ impl StreamManager {
     // If not and is a valid header, opens the stream
     // Else, checks to see if it is a continuation frame
     // If not, does a final check for validity
-    pub fn check_valid_frame(&mut self, frame: &RawFrame) -> bool {
+    pub fn check_valid_frame(&mut self, frame: &RawFrame, by_peer: bool) -> bool {
 
         let frame_type = frame.header.1;
         let stream_id = frame.header.3;
@@ -440,10 +441,14 @@ impl StreamManager {
             // Stream id's must be increasing, respond to unexpected id's with PROTOCOL_ERROR
             // currently check_valid_frame is only used on recieve
             0x1 | 0x5 => {
-                self.check_valid_open_request(stream_id, false)
+                self.check_valid_open_request(stream_id, by_peer)
             },
-            _ => false //conn err?
+            _ => {
+                false //conn err?
+            }
         };
+
+        println!("valid opener should be true, {:?}", valid_opener);
 
         //TODO: Refactor Match of Doom
         match self.get_stream_status(&stream_id) {
@@ -613,6 +618,8 @@ mod tests {
     //     self.flags |= flag.bitmask();
     // }
 
+    // BeforeEach?
+
     /// Builds a test frame of the given type with the given header and
     /// payload, by using the `Frame::from_raw` method.
     pub fn build_test_rawframe (stream_id: u32, frame_type: &str, flags: &str) -> RawFrame {
@@ -654,10 +661,17 @@ mod tests {
     }
 
 
-    // #[test]
-    fn test_check_valid_frame () {
+    // Tests for the external API of StreamManager
+    #[test]
+    fn test_recv_frame () {
+        let mut stream_manager = StreamManager::new(4, false);
+        let stream_id = 2;
 
+        let raw_header = build_test_rawframe(stream_id, "headers", "none");
+        let check_pass = stream_manager.recv_frame(&raw_header);
+        assert_eq!(check_pass, true);
     }
+
 
     // Tests for Opening a stream
     #[test]
@@ -667,28 +681,22 @@ mod tests {
         assert_eq!(stream_manager.streams[&1].state, StreamStates::Open);
     }
 
+    // Tests check_valid_frame rejects inappropriate frames for a given stream.
     // A new open stream should not immediately accept continuation frames unless the expect_continuation is set.
     #[test]
     fn test_open_with_continuation () {
-        let mut stream_manager = StreamManager::new(4, false);
-        stream_manager.open(1, false);
+        let mut stream_manager = StreamManager::new(4, false); // client
+        stream_manager.open(1, false); // client init stream
 
         let raw_continue = build_test_rawframe(1, "continuation", "none");
 
-        let check_fail = stream_manager.check_valid_frame(&raw_continue);
+        let check_fail = stream_manager.check_valid_frame(&raw_continue, false); // send_frame?
         assert_eq!(check_fail, false);
 
         stream_manager.get_stream_status(&1).unwrap().set_continue(true);
 
-        let check_again = stream_manager.check_valid_frame(&raw_continue);
+        let check_again = stream_manager.check_valid_frame(&raw_continue, false);
         assert_eq!(check_again, true);
-    }
-
-
-    //Connections open through a series of exchanges.
-    #[test]
-    fn test_implicit_open () {
-        
     }
 
     //Tests for handlers
