@@ -259,7 +259,7 @@ impl StreamManager {
                 },
                 //PushPromise
                 0x5 => {
-                    // only in idle
+                    self.handle_push_promise(true, &frame);
                 },
                 //Ping
                 0x6 => {
@@ -330,12 +330,47 @@ impl StreamManager {
         // increment active stream count
     }
 
+    // TODO: PP has very nuanced implementation details, take care that they are covered
+    // eg ignoring/rejecting pp's
+    fn handle_push_promise (&mut self, by_peer: bool, frame: &RawFrame) {
+        let flag = frame.header.2;
+        let stream_id = frame.header.3;
+        
+        // first check if stream is in hashmap
+        let exists = match self.get_stream_status(&stream_id) {
+            None => false,
+            Some(_status) => true,
+        };
+
+        // if state is idle (not in hashmap), reserve it
+        if !exists {
+            self.open_idle(stream_id, by_peer);
+            let mut status = self.get_stream_status(&stream_id).unwrap();
+            match flag {
+                // end header present
+                0x4 => {
+                    if by_peer {
+                        status.set_state(StreamStates::ReservedRemote);
+                    } else {
+                        status.set_state(StreamStates::ReservedLocal);
+                    };
+                },
+
+                _ => {
+                    status.set_continue(true);
+                }
+            }
+        };
+
+    }
+
+    // Continuation frames can only follow push promise or headers frames.
+    // they may carry a end headers flag which could transition to halfclosed states
     fn handle_continuation (&mut self, by_peer: bool, frame: &RawFrame) {
         let flag = frame.header.2;
         let stream_id = frame.header.3;
         let status = self.get_stream_status(&stream_id).unwrap();
 
-        println!("end header flag detected in handle continue {:?}", flag);
         match flag {
             //end header
             0x4 => {
@@ -448,6 +483,7 @@ impl StreamManager {
         match frame_type {
             0x1 => true, // headers -> half closed local | half closed remote if ES flag
             0x3 if !by_peer => true, // rst -> closed
+            0x5 => true, //push promise
             0x20 => true, // priority
             _ => false // PROTOCOL_ERROR
         }
@@ -471,6 +507,7 @@ impl StreamManager {
         // Send: Either endpoint RST_STREAM --> Closed
         match frame_type {
             0x1 if !by_peer => true, // send headers -> half closed remote
+            0x9 if !by_peer => true, // continuation
             0x3 => true, // rst -> closed
             0x20 => true, // priority
             0x8 => true, // window update
@@ -491,6 +528,7 @@ impl StreamManager {
         // Reserved by remote peer
         match frame_type {
             0x1 if by_peer => true, //headers -> half closed local
+            0x9 if by_peer => true, //continuation
             0x3 => true, // rst -> closed
             0x20 => true, // priority
             0x8 => true, // window update
@@ -557,8 +595,8 @@ impl StreamManager {
         // no longer used by peer to send frames, no longer obligated to maintain reciever flow control window
         // Error w/ STREAM_CLOSED when when recv frames not WINDOW_UPDATE, PRIORITY, RST_STREAM
         match frame_type {
-            0x3 => true, // rst | ES flag -> closed
             0x9 if !by_peer => true, // continuation with es?
+            0x3 => true, // rst | ES flag -> closed
             0x20 => true,
             0x8 if by_peer => true, // recv window update
             _ => false // PROTOCOL_ERROR
