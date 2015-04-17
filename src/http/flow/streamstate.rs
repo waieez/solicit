@@ -20,6 +20,7 @@ pub struct StreamStatus {
     dependancy: Option<u32>,
     is_exclusive: bool,
     expects_continuation: bool,
+    should_end: bool
     //children: Vec<u32>?
     //window_size:?
 }
@@ -32,6 +33,7 @@ impl StreamStatus {
             dependancy: None,
             is_exclusive: false,
             expects_continuation: false,
+            should_end: false,
         }
     }
 
@@ -60,6 +62,11 @@ impl StreamStatus {
 
     fn set_continue(&mut self, expects_continuation: bool) -> &mut StreamStatus {
         self.expects_continuation = expects_continuation;
+        self
+    }
+
+    fn set_end(&mut self, should_end: bool) -> &mut StreamStatus {
+        self.should_end = should_end;
         self
     }
 }
@@ -283,6 +290,9 @@ impl StreamManager {
     }
 
     // Assumes valid header frame for state
+    //A HEADERS frame carries the END_STREAM flag that signals the end of a stream.
+    //However, a HEADERS frame with the END_STREAM flag set can be followed by CONTINUATION frames on the same stream.
+    //Logically, the CONTINUATION frames are part of the HEADERS frame.
     fn handle_header (&mut self, by_peer: bool, frame: &RawFrame) { // parse frame here?
         let flag = frame.header.2;
         let stream_id = frame.header.3;
@@ -302,32 +312,64 @@ impl StreamManager {
         // finally, extract the streamstatus
         let mut status = self.get_stream_status(&stream_id).unwrap();
 
-        match flag { // bitmask? are end stream and end headers mututally exclusive?
-            //if End Stream flag,
-            0x1 => {
-                if by_peer {
-                    // if recv -> half_closed remote 
+        // end stream set on headers should not close stream until 
+        // end headers flag recieved on header/continuation frame
+
+        // todo: modify streamstatus to check if the stream should end if
+        // expect continue is false and should end is true
+        // transition state if condition passes
+
+        //todo: bitmask to extract relevant flag
+        //endheaders
+        if flag == 0x4 {
+            match status.state {
+                StreamStates::ReservedLocal if !by_peer => {
                     status.set_state(StreamStates::HalfClosedRemote);
-                } else {
-                    //if send -> half closed local
+                },
+
+                StreamStates::ReservedRemote if by_peer => {
                     status.set_state(StreamStates::HalfClosedLocal);
+                },
+                _ => {// Has already, transitioned to Open from Idle and should stay open
+                    // Half Closed, Closed should have erred in validiy checks
                 }
-                // should probably not expect continuation
-                status.set_continue(false);
             }
-            //end header
-            0x4 => {
-                status.set_continue(false); // should already be false
-            },
-            //padded
-            //0x8
-            //priority
-            //0x20
-            _ => {
-                status.set_continue(true);
-            }
-        }
+            status.set_continue(false);
+        } else {
+            status.set_continue(true);
+        };
         // increment active stream count
+
+        //todo: bitmask to extract relevant flag
+        //endstream
+        if flag == 0x1 {
+            status.set_end(true);
+
+            match status.state {
+                //if open and send/recv end stream flag
+                StreamStates::Open => {
+                    if by_peer {
+                        // if recv -> half_closed remote 
+                        status.set_state(StreamStates::HalfClosedRemote);
+                    } else {
+                        //if send -> half closed local
+                        status.set_state(StreamStates::HalfClosedLocal);
+                    }
+                },
+
+                // If Half Closed, and End Stream Flag and End Header Flag Set, close stream.
+                StreamStates::HalfClosedRemote |
+                StreamStates::HalfClosedLocal 
+                if status.expects_continuation == false &&
+                status.should_end == true => {
+                    status.set_state(StreamStates::Closed);
+                },
+
+                _ => {
+                    // should probably err
+                }
+            };
+        };
     }
 
     // TODO: PP has very nuanced implementation details, take care that they are covered
@@ -356,11 +398,13 @@ impl StreamManager {
                     };
                 },
 
-                _ => {
+                _ => { // status: idle, continue: true
                     status.set_continue(true);
                 }
             }
-        };
+        } else {
+            // should err with validity check
+        }
 
     }
 
@@ -373,18 +417,48 @@ impl StreamManager {
 
         match flag {
             //end header
-            0x4 => {
-                if !by_peer && status.state == StreamStates::ReservedLocal {
-                    status.set_state(StreamStates::HalfClosedRemote);
-                } else if by_peer && status.state == StreamStates::ReservedRemote {
-                    status.set_state(StreamStates::HalfClosedLocal);
-                } // else remain open
+            0x4 => { // continuation can imply 4 state transitions
                 status.set_continue(false);
+
+                match status.state {
+                    StreamStates::Idle => { // initiated by push promise
+                        if by_peer {
+                            status.set_state(StreamStates::ReservedRemote);
+                        } else {
+                            status.set_state(StreamStates::ReservedLocal);
+                        };
+                    },
+
+                    StreamStates::ReservedLocal if !by_peer => { // initiated by header in reserved
+                        status.set_state(StreamStates::HalfClosedRemote);
+                    },
+
+                    StreamStates::ReservedRemote if by_peer => { // initiated by header in reserved
+                        status.set_state(StreamStates::HalfClosedLocal);
+                    },
+
+                    //Transitioned from Open with ES flag
+                    StreamStates::HalfClosedLocal if by_peer => {
+                        //recv continuation frame with EH flag, should close stream
+                    },
+                    //Transitioned from Open with ES flag
+                    StreamStates::HalfClosedRemote if !by_peer => {
+                        //send continuation frame with EH should, should close stream
+                    }
+                    _ => (), //Open, should remain open
+                    //Closed should have erred in validity check
+                    //invalid continuation frame in half closed should err?
+                }
+
+                if status.should_end {
+                    status.set_state(StreamStates::Closed);
+                    //todo: update active streams
+                };
             },
             // check_continue manages continuation expectations
             // if end header flag not set, expect continuation, state unchanged.
             _ => (),
-        }
+        };
     }
 
     fn handle_rst_stream (&mut self, by_peer: bool, frame: &RawFrame) {
@@ -416,6 +490,7 @@ impl StreamManager {
             }
         };
 
+        println!("fn chk valid: valid so far? {:?}", valid_so_far);
         if valid_so_far {
             self.check_state(by_peer, &frame)
         } else {
@@ -457,6 +532,8 @@ impl StreamManager {
             None => StreamStates::Idle,
             Some(status) => status.state.clone(),
         };
+
+        println!("State is {:?}", state);
 
         match state {
             StreamStates::Idle => self.check_idle(by_peer, &frame),
@@ -571,7 +648,7 @@ impl StreamManager {
         // Half Closed Local (READING)
         // SEND: WINDOW_UPDATE, PRIORITY, RST Stream
         match frame_type { //TODO: clarify allowed frames
-            0x9 if by_peer => true, // continuation with es?
+            0x9 => true, // continuation with eh?
             0x3 => true, // rst | ES flag -> closed
             0x20 => true,
             0x8 if !by_peer => true, // send window update
@@ -595,7 +672,7 @@ impl StreamManager {
         // no longer used by peer to send frames, no longer obligated to maintain reciever flow control window
         // Error w/ STREAM_CLOSED when when recv frames not WINDOW_UPDATE, PRIORITY, RST_STREAM
         match frame_type {
-            0x9 if !by_peer => true, // continuation with es?
+            0x9 => true, // continuation with eh?
             0x3 => true, // rst | ES flag -> closed
             0x20 => true,
             0x8 if by_peer => true, // recv window update
@@ -723,12 +800,14 @@ mod tests {
         let stream_id = 2;
         let mut stream_manager = StreamManager::new(4, false);
         let raw_header = build_test_rawframe(stream_id, "headers", "endstream");
-        let raw_rst = build_test_rawframe(stream_id, "rststream", "none");
+        let raw_continue = build_test_rawframe(stream_id, "continuation", "endheaders");
 
         let check_pass1 = stream_manager.recv_frame(&raw_header);
         assert_eq!(check_pass1, true);
+        //should be status: open, expect continue: true, should end: true
 
-        let check_pass2 = stream_manager.recv_frame(&raw_rst);
+        println!("starting second test...............");
+        let check_pass2 = stream_manager.recv_frame(&raw_continue);
         assert_eq!(check_pass2, true);
     }
 
@@ -807,11 +886,11 @@ mod tests {
         stream_manager.handle_header(true, &raw_header);
 
         let updated_server_id = stream_manager.last_server_id;
-        let stream_2_status = stream_manager.get_stream_status(&stream_id).unwrap();
+        let stream_status = stream_manager.get_stream_status(&stream_id).unwrap();
 
         // handle header(recv) should create a streamstatus with status: open and expect_continue to be true
-        assert_eq!(stream_2_status.state, StreamStates::Open);
-        assert_eq!(stream_2_status.expects_continuation, true);
+        assert_eq!(stream_status.state, StreamStates::Open);
+        assert_eq!(stream_status.expects_continuation, true);
         // the newly created stream should update the id
         assert_eq!(updated_server_id, 2);
     }
@@ -826,11 +905,12 @@ mod tests {
         stream_manager.handle_header(true, &raw_header);
 
         let updated_server_id = stream_manager.last_server_id;
-        let stream_2_status = stream_manager.get_stream_status(&stream_id).unwrap();
+        let stream_status = stream_manager.get_stream_status(&stream_id).unwrap();
 
         // handle header(recv) should create a streamstatus with status: closed and expect_continue to be false
-        assert_eq!(stream_2_status.state, StreamStates::HalfClosedRemote);
-        assert_eq!(stream_2_status.expects_continuation, false);
+        assert_eq!(stream_status.state, StreamStates::HalfClosedRemote);
+        assert_eq!(stream_status.expects_continuation, true);
+        assert_eq!(stream_status.should_end, true);
         // the newly created stream should update the id
         assert_eq!(updated_server_id, 2);
     }
