@@ -9,9 +9,26 @@
 //use super::super::frame::{RawFrame, FrameHeader, unpack_header};
 
 use std::collections::HashMap;
-use super::super::frame::{RawFrame};
+use super::super::frame::{RawFrame, Flag};
 
 // move StreamStatus/States into mod.rs?
+
+pub enum Flags {
+    EndStream = 0x1,
+    EndHeaders = 0x4,
+    Padded = 0x8,
+    Priority = 0x20,
+}
+
+impl Flags {
+    fn bitmask(self) -> u8 {
+        self as u8
+    }
+    // Tests if the given flag is set for the frame.
+    fn is_set(self, flags: u8) -> bool {
+        (flags & self.bitmask()) != 0
+    }
+}
 
 #[derive(Hash, Eq, PartialEq, Debug)]
 pub struct StreamStatus {
@@ -739,7 +756,8 @@ impl StreamManager {
 mod tests {
     use super::{
         StreamManager,
-        StreamStates
+        StreamStates,
+        Flags
     };
 
     use super::super::super::frame::{RawFrame, pack_header};
@@ -791,6 +809,20 @@ mod tests {
             buf
         };
         RawFrame::from_buf(&buf).unwrap()
+    }
+
+    // pub enum Flags {
+    //     EndStream = 0x1,
+    //     EndHeaders = 0x4,
+    //     Padded = 0x8,
+    //     Priority = 0x20,
+    // }
+
+    //tests for incoming flags
+    #[test]
+    fn test_bitmask_flag () {
+        let check_pass = Flags::EndStream.is_set(0x1);
+        assert_eq!(check_pass, true);
     }
 
     // Tests for the external API of StreamManager
