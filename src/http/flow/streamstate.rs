@@ -131,7 +131,7 @@ impl StreamManager {
         debug!("opening stream {:?}", &stream_id);
         //clients can only open odd streams, servers even.
         //potentially create streams using this api.
-        println!("inside open idle...");
+        println!("fn open_idle: inside open idle..., ln134");
         if self.check_valid_open_request(stream_id, by_peer) { // checked before already in check_valid_frame
             self.streams.insert(stream_id, StreamStatus::new());
 
@@ -156,14 +156,14 @@ impl StreamManager {
         // Exhaustively ensures the stream has not already been set
         // Checks if stream_id provided is valid
         if not_set {
-            println!("pass control to open_idle");
+            println!("fn open: pass control to open_idle");
             self.open_idle(stream_id, by_peer);
         };
 
-        println!("called open on stream: {:?} {:?}", &stream_id, not_set);
+        println!("fn open: called open on stream: {:?} {:?}, ln 163", &stream_id, not_set);
         // And only opens the stream if it was originally set to idle
         if self.streams[&stream_id].state == StreamStates::Idle {
-            println!("stream state is idle.., forcing open..", );
+            println!("fn open: stream state is idle.., forcing open..", );
             self.set_state(&stream_id, StreamStates::Open);
         };
         // else err, tried to manually open a stream that has transitioned
@@ -207,7 +207,7 @@ impl StreamManager {
     // API to manually set the state of a stream to be closed
     pub fn close (&mut self, stream_id: u32) {
         //potentially close streams using this api.
-        debug!("closing stream {:?}", &stream_id);
+        debug!("fn close: closing stream {:?}, ln210", &stream_id);
         self.set_state(&stream_id, StreamStates::Closed);
     }
 
@@ -227,7 +227,7 @@ impl StreamManager {
         // If the frame is valid, (new stream?, continuation?, otherwise still valid?)
         let is_valid = self.check_valid_frame(&frame, true); //by_peer?
 
-        println!("is the frame valid? {:?}", is_valid);
+        println!("fn recv_frame: is the frame valid? {:?}, ln230", is_valid);
 
         if !is_valid {
             //return an error
@@ -272,8 +272,7 @@ impl StreamManager {
                 },
                 //Continuation
                 0x9 => {
-                    //Sent after Header or PP,
-                    //If doesn't contain end
+                    self.handle_continuation(true, &frame);
                 },
                 _ => {
                     // should not enter here
@@ -296,7 +295,7 @@ impl StreamManager {
 
         // if state is idle (not in hashmap), force open
         if state == StreamStates::Idle {
-            println!("opening the stream... {:?}", &stream_id);
+            println!("fn handle header: opening the stream... {:?}, ln299", &stream_id);
             self.open(stream_id, by_peer);
         };
 
@@ -331,22 +330,27 @@ impl StreamManager {
         // increment active stream count
     }
 
-    // fn handle_continuation () {
-    //     let flag = frame.header.2;
-    //     let stream_id = frame.header.3;
+    fn handle_continuation (&mut self, by_peer: bool, frame: &RawFrame) {
+        let flag = frame.header.2;
+        let stream_id = frame.header.3;
+        let status = self.get_stream_status(&stream_id).unwrap();
 
-    //     match by_peer {
-    //         // recv
-    //         true => {
-                
-    //         },
-
-    //         //send 
-    //         false =>  {
-
-    //         },
-    //     };
-    // }
+        println!("end header flag detected in handle continue {:?}", flag);
+        match flag {
+            //end header
+            0x4 => {
+                if !by_peer && status.state == StreamStates::ReservedLocal {
+                    status.set_state(StreamStates::HalfClosedRemote);
+                } else if by_peer && status.state == StreamStates::ReservedRemote {
+                    status.set_state(StreamStates::HalfClosedLocal);
+                } // else remain open
+                status.set_continue(false);
+            },
+            // check_continue manages continuation expectations
+            // if end header flag not set, expect continuation, state unchanged.
+            _ => (),
+        }
+    }
 
     fn handle_rst_stream (&mut self, by_peer: bool, frame: &RawFrame) {
         // first check if stream is in hashmap
@@ -553,6 +557,7 @@ impl StreamManager {
         // no longer used by peer to send frames, no longer obligated to maintain reciever flow control window
         // Error w/ STREAM_CLOSED when when recv frames not WINDOW_UPDATE, PRIORITY, RST_STREAM
         match frame_type {
+            0x3 => true, // rst | ES flag -> closed
             0x9 if !by_peer => true, // continuation with es?
             0x20 => true,
             0x8 if by_peer => true, // recv window update
@@ -674,15 +679,19 @@ mod tests {
     }
 
     // Tests for the external API of StreamManager
+    // Tests that check_valid allows the appropriate frames through, handlers are tested individually
     #[test]
     fn test_recv_frame () {
         let stream_id = 2;
         let mut stream_manager = StreamManager::new(4, false);
+        let raw_header = build_test_rawframe(stream_id, "headers", "endstream");
+        let raw_rst = build_test_rawframe(stream_id, "rststream", "none");
 
-        let raw_header = build_test_rawframe(stream_id, "headers", "none");
-        let check_pass = stream_manager.recv_frame(&raw_header);
-        // should pass, stream should be open, id should be valid
-        assert_eq!(check_pass, true);
+        let check_pass1 = stream_manager.recv_frame(&raw_header);
+        assert_eq!(check_pass1, true);
+
+        let check_pass2 = stream_manager.recv_frame(&raw_rst);
+        assert_eq!(check_pass2, true);
     }
 
     // Tests for Opening a stream
@@ -692,6 +701,16 @@ mod tests {
         let mut stream_manager = StreamManager::new(4, false);
 
         stream_manager.open(stream_id, false);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Open);
+    }
+
+    #[test]
+    fn test_implicit_open () {
+        let stream_id = 2;
+        let mut stream_manager = StreamManager::new(4, false);
+        let raw_header = build_test_rawframe(stream_id, "headers", "none");
+
+        stream_manager.recv_frame(&raw_header);
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Open);
     }
 
@@ -706,23 +725,37 @@ mod tests {
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
     }
 
+    // A new stream defaults to not expect continuation, receiving a continuation frame should immediately be rejected
+    #[test]
+    fn test_check_continue () {
+        let stream_id = 2;
+        let mut stream_manager = StreamManager::new(4, false);
+        let raw_continue = build_test_rawframe(stream_id, "continuation", "none");
+
+        let check_fail = stream_manager.check_continue(&raw_continue);
+        assert_eq!(check_fail, false);
+    }
+
     // Tests check_valid_frame rejects inappropriate frames for a given stream.
     // A new open stream should not immediately accept continuation frames unless the expect_continuation is set.
     #[test]
     fn test_open_with_continuation () {
-        let stream_id = 1;
+
+        let stream_id = 2;
         let mut stream_manager = StreamManager::new(4, false);
+        let raw_header = build_test_rawframe(stream_id, "headers", "none");
         let raw_continue = build_test_rawframe(stream_id, "continuation", "none");
-        
-        stream_manager.open(stream_id, false);
+        let raw_continue_end = build_test_rawframe(stream_id, "continuation", "endheaders");
 
-        let check_fail = stream_manager.check_valid_frame(&raw_continue, false);
-        assert_eq!(check_fail, false);
+        stream_manager.recv_frame(&raw_header);
+        stream_manager.recv_frame(&raw_continue);
 
-        stream_manager.get_stream_status(&stream_id).unwrap().set_continue(true);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Open);
 
-        let check_again = stream_manager.check_valid_frame(&raw_continue, false);
-        assert_eq!(check_again, true);
+        stream_manager.recv_frame(&raw_continue_end);
+
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Open);
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
     }
 
     //Tests for handlers
@@ -776,6 +809,23 @@ mod tests {
         stream_manager.handle_rst_stream(false, &raw_rst_stream);
 
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
+    }
+
+    // Receiving a continuation frame with the end header flag set should disable continuation
+    #[test]
+    fn test_handle_continuation () {
+        let stream_id = 2;
+        let mut stream_manager = StreamManager::new(4, false);
+        let raw_header = build_test_rawframe(stream_id, "headers", "none");
+        let raw_continue_end = build_test_rawframe(stream_id, "continuation", "endheaders");
+
+        stream_manager.recv_frame(&raw_header); // state should be open, expects continue
+
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, true);
+
+        stream_manager.handle_continuation(true, &raw_continue_end);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Open);
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
     }
 
 
