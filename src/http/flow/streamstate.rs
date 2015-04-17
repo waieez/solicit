@@ -211,6 +211,78 @@ impl StreamManager {
         self.set_state(&stream_id, StreamStates::Closed);
     }
 
+    // fn send_frame?
+
+    // Recieves a RawFrame and does validation checks between the frame and the state of the associated stream.
+    // If validated, returns true. Else, returns the error thrown during validation.
+    // Also updates the state of the stream implied by the recieved frames.
+    pub fn recv_frame (&mut self, frame: &RawFrame) -> bool {
+        // What happens if the raw frame to be processed errors? Connection Error and Close Stream?
+
+        // let length = frame.header.0;
+        let frame_type = frame.header.1;
+        // let flag = frame.header.2;
+        let stream_id = frame.header.3;
+
+        // If the frame is valid, (new stream?, continuation?, otherwise still valid?)
+        let is_valid = self.check_valid_frame(&frame, true); //by_peer?
+
+        println!("is the frame valid? {:?}", is_valid);
+
+        if !is_valid {
+            //return an error
+            //close stream due to connection error?
+            false
+        } else {
+            // state transition, by peer
+            // self.transition_state(&frame, false);
+
+            // process frame?
+            // return a processed frame?
+            match frame_type {
+                //Data
+                0x0 => {
+                },
+                //Header
+                0x1 => {
+                    self.handle_header(true, &frame);
+                },
+                //Priority
+                0x20 => {
+                },
+                //RST
+                0x3 => {
+                    self.handle_rst_stream(true, &frame);
+                },
+                //Setting
+                0x4 => {
+                },
+                //PushPromise
+                0x5 => {
+                    // only in idle
+                },
+                //Ping
+                0x6 => {
+                },
+                //Goaway
+                0x7 => {
+                },
+                //WindowsUpdate
+                0x8 => {
+                },
+                //Continuation
+                0x9 => {
+                    //Sent after Header or PP,
+                    //If doesn't contain end
+                },
+                _ => {
+                    // should not enter here
+                }
+            };
+            true
+        }
+    }
+
     // Assumes valid header frame for state
     fn handle_header (&mut self, by_peer: bool, frame: &RawFrame) { // parse frame here?
         let flag = frame.header.2;
@@ -276,96 +348,11 @@ impl StreamManager {
     //     };
     // }
 
-    // fn handle_rst_stream () {
-    //     let flag = frame.header.2;
-    //     let stream_id = frame.header.3;
-
-    //     match by_peer {
-    //         // recv
-    //         true => {
-                
-    //         },
-
-    //         //send 
-    //         false =>  {
-
-    //         },
-    //     };
-    // }
-
-
-    // fn send_frame?
-
-    // Recieves a RawFrame and does validation checks between the frame and the state of the associated stream.
-    // If validated, returns true. Else, returns the error thrown during validation.
-    // Also updates the state of the stream implied by the recieved frames.
-    pub fn recv_frame (&mut self, frame: &RawFrame) -> bool {
-        // What happens if the raw frame to be processed errors? Connection Error and Close Stream?
-
-        // let length = frame.header.0;
-        let frame_type = frame.header.1;
-        // let flag = frame.header.2;
+    fn handle_rst_stream (&mut self, by_peer: bool, frame: &RawFrame) {
+        // first check if stream is in hashmap
         let stream_id = frame.header.3;
-
-        // If the frame is valid, (new stream?, continuation?, otherwise still valid?)
-        let is_valid = self.check_valid_frame(&frame, true); //by_peer?
-
-        println!("is the frame valid? {:?}", is_valid);
-
-        if !is_valid {
-            //return an error
-            //close stream due to connection error?
-            false
-        } else {
-            // state transition, by peer
-            // self.transition_state(&frame, false);
-
-            // process frame?
-            // return a processed frame?
-            match frame_type {
-                //Data
-                0x0 => {
-                },
-                //Header
-                0x1 => {
-                    self.handle_header(true, &frame);
-                },
-                //Priority
-                0x20 => {
-                },
-                //RST
-                0x3 => {
-                },
-                //Setting
-                0x4 => {
-                },
-                //PushPromise
-                0x5 => {
-                    // only in idle
-                },
-                //Ping
-                0x6 => {
-                },
-                //Goaway
-                0x7 => {
-                },
-                //WindowsUpdate
-                0x8 => {
-                },
-                //Continuation
-                0x9 => {
-                    //Sent after Header or PP,
-                    //If doesn't contain end
-                },
-                _ => {
-                    // should not enter here
-                }
-            };
-            true
-        }
+        self.close(stream_id);
     }
-
-
 
     // Checks if the incoming frame is valid for the particular stream.
     // First identifies if incoming frame is associated with a stream
@@ -689,8 +676,8 @@ mod tests {
     // Tests for the external API of StreamManager
     #[test]
     fn test_recv_frame () {
-        let mut stream_manager = StreamManager::new(4, false);
         let stream_id = 2;
+        let mut stream_manager = StreamManager::new(4, false);
 
         let raw_header = build_test_rawframe(stream_id, "headers", "none");
         let check_pass = stream_manager.recv_frame(&raw_header);
@@ -701,37 +688,53 @@ mod tests {
     // Tests for Opening a stream
     #[test]
     fn test_open_stream () {
+        let stream_id = 1;
         let mut stream_manager = StreamManager::new(4, false);
-        stream_manager.open(1, false);
-        assert_eq!(stream_manager.streams[&1].state, StreamStates::Open);
+
+        stream_manager.open(stream_id, false);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Open);
+    }
+
+    // Calling close closes a given stream
+    #[test]
+    fn test_close_stream () {
+        let stream_id = 1;
+        let mut stream_manager = StreamManager::new(4, false);
+        stream_manager.open(stream_id, false);
+        stream_manager.close(stream_id);
+
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
     }
 
     // Tests check_valid_frame rejects inappropriate frames for a given stream.
     // A new open stream should not immediately accept continuation frames unless the expect_continuation is set.
     #[test]
     fn test_open_with_continuation () {
-        let mut stream_manager = StreamManager::new(4, false); // client
-        stream_manager.open(1, false); // client init stream
+        let stream_id = 1;
+        let mut stream_manager = StreamManager::new(4, false);
+        let raw_continue = build_test_rawframe(stream_id, "continuation", "none");
+        
+        stream_manager.open(stream_id, false);
 
-        let raw_continue = build_test_rawframe(1, "continuation", "none");
-
-        let check_fail = stream_manager.check_valid_frame(&raw_continue, false); // send_frame?
+        let check_fail = stream_manager.check_valid_frame(&raw_continue, false);
         assert_eq!(check_fail, false);
 
-        stream_manager.get_stream_status(&1).unwrap().set_continue(true);
+        stream_manager.get_stream_status(&stream_id).unwrap().set_continue(true);
 
         let check_again = stream_manager.check_valid_frame(&raw_continue, false);
         assert_eq!(check_again, true);
     }
 
     //Tests for handlers
+    // Receiving a header with out a set flag 'opens' a new stream. The stream now expects continuation frames
     #[test]
     fn test_handle_header_continue () {
-        let mut stream_manager = StreamManager::new(4, false);
         let stream_id = 2;
-
+        let mut stream_manager = StreamManager::new(4, false);
         let raw_header = build_test_rawframe(stream_id, "headers", "none");
+
         stream_manager.handle_header(true, &raw_header);
+
         let updated_server_id = stream_manager.last_server_id;
         let stream_2_status = stream_manager.get_stream_status(&stream_id).unwrap();
 
@@ -742,13 +745,15 @@ mod tests {
         assert_eq!(updated_server_id, 2);
     }
 
+    // Receiving a header with the end stream flag transitions the stream to HalfClosedRemote
     #[test]
     fn test_handle_header_end_stream () {
-        let mut stream_manager = StreamManager::new(4, false);
         let stream_id = 2;
-
+        let mut stream_manager = StreamManager::new(4, false);
         let raw_header = build_test_rawframe(stream_id, "headers", "endstream");
+
         stream_manager.handle_header(true, &raw_header);
+
         let updated_server_id = stream_manager.last_server_id;
         let stream_2_status = stream_manager.get_stream_status(&stream_id).unwrap();
 
@@ -759,17 +764,23 @@ mod tests {
         assert_eq!(updated_server_id, 2);
     }
 
-    //Tests for Closing a stream
+    // Receiving a rst stream frame should close the stream
+    // TODO: implement a configurable window for receiving incoming frames
+    #[test]
+    fn test_handle_rst () {
+        let stream_id = 1;
+        let mut stream_manager = StreamManager::new(4, false);
+        let raw_rst_stream = build_test_rawframe(stream_id, "rststream", "none");
 
-    // Manual Close
+        stream_manager.open(stream_id, false);
+        stream_manager.handle_rst_stream(false, &raw_rst_stream);
 
-    // Connection Errors should close a stream
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
+    }
 
-    // End Flags on different frames
-    //Header, Data, Continuation
-
-    // RST_Frame
 
     // Test for Data Frames
+
+    // Connection Errors should close a stream
 
 }
