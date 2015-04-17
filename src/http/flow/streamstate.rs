@@ -328,7 +328,7 @@ impl StreamManager {
                 },
                 //Header
                 0x1 => {
-                    self.handle_header(&frame, true);
+                    self.handle_header(true, &frame);
                 },
                 //Priority
                 0x20 => {
@@ -479,7 +479,7 @@ impl StreamManager {
         // Send: HEADERS --> half closed (remote)
         // Send: Either endpoint RST_STREAM --> Closed
         match frame_type {
-            0x1 !by_peer => true, // send headers -> half closed remote
+            0x1 if !by_peer => true, // send headers -> half closed remote
             0x3 => true, // rst -> closed
             0x20 => true, // priority
             0x8 => true, // window update
@@ -545,8 +545,8 @@ impl StreamManager {
             0x9 if by_peer => true, // continuation with es?
             0x3 => true, // rst | ES flag -> closed
             0x20 => true,
-            0x8 if !by_peer => // send window update
-            _ => true, // Can Recv any frame
+            0x8 if !by_peer => true, // send window update
+            _ => true // Can Recv any frame
         }
     }
 
