@@ -338,7 +338,7 @@ impl StreamManager {
 
         //todo: bitmask to extract relevant flag
         //endheaders
-        if flag == 0x4 {
+        if Flags::EndHeaders.is_set(flag) {
             match status.state {
                 StreamStates::ReservedLocal if !by_peer => {
                     status.set_state(StreamStates::HalfClosedRemote);
@@ -359,7 +359,7 @@ impl StreamManager {
 
         //todo: bitmask to extract relevant flag
         //endstream
-        if flag == 0x1 {
+        if Flags::EndStream.is_set(flag) {
             status.set_end(true);
 
             match status.state {
@@ -405,23 +405,20 @@ impl StreamManager {
         if !exists {
             self.open_idle(stream_id, by_peer);
             let mut status = self.get_stream_status(&stream_id).unwrap();
-            match flag {
-                // end header present
-                0x4 => {
-                    if by_peer {
-                        status.set_state(StreamStates::ReservedRemote);
-                    } else {
-                        status.set_state(StreamStates::ReservedLocal);
-                    };
-                },
 
-                _ => { // status: idle, continue: true
-                    status.set_continue(true);
-                }
-            }
+            if Flags::EndHeaders.is_set(flag) {
+                if by_peer {
+                    status.set_state(StreamStates::ReservedRemote);
+                } else {
+                    status.set_state(StreamStates::ReservedLocal);
+                };
+            } else {
+                status.set_continue(true);
+            };
+
         } else {
             // should err with validity check
-        }
+        };
 
     }
 
@@ -432,49 +429,43 @@ impl StreamManager {
         let stream_id = frame.header.3;
         let status = self.get_stream_status(&stream_id).unwrap();
 
-        match flag {
-            //end header
-            0x4 => { // continuation can imply 4 state transitions
-                status.set_continue(false);
+        if Flags::EndHeaders.is_set(flag) {
+            status.set_continue(false);
 
-                match status.state {
-                    StreamStates::Idle => { // initiated by push promise
-                        if by_peer {
-                            status.set_state(StreamStates::ReservedRemote);
-                        } else {
-                            status.set_state(StreamStates::ReservedLocal);
-                        };
-                    },
+            match status.state {
+                StreamStates::Idle => { // initiated by push promise
+                    if by_peer {
+                        status.set_state(StreamStates::ReservedRemote);
+                    } else {
+                        status.set_state(StreamStates::ReservedLocal);
+                    };
+                },
 
-                    StreamStates::ReservedLocal if !by_peer => { // initiated by header in reserved
-                        status.set_state(StreamStates::HalfClosedRemote);
-                    },
+                StreamStates::ReservedLocal if !by_peer => { // initiated by header in reserved
+                    status.set_state(StreamStates::HalfClosedRemote);
+                },
 
-                    StreamStates::ReservedRemote if by_peer => { // initiated by header in reserved
-                        status.set_state(StreamStates::HalfClosedLocal);
-                    },
+                StreamStates::ReservedRemote if by_peer => { // initiated by header in reserved
+                    status.set_state(StreamStates::HalfClosedLocal);
+                },
 
-                    //Transitioned from Open with ES flag
-                    StreamStates::HalfClosedLocal if by_peer => {
-                        //recv continuation frame with EH flag, should close stream
-                    },
-                    //Transitioned from Open with ES flag
-                    StreamStates::HalfClosedRemote if !by_peer => {
-                        //send continuation frame with EH should, should close stream
-                    }
-                    _ => (), //Open, should remain open
-                    //Closed should have erred in validity check
-                    //invalid continuation frame in half closed should err?
+                //Transitioned from Open with ES flag
+                StreamStates::HalfClosedLocal if by_peer => {
+                    //recv continuation frame with EH flag, should close stream
+                },
+                //Transitioned from Open with ES flag
+                StreamStates::HalfClosedRemote if !by_peer => {
+                    //send continuation frame with EH should, should close stream
                 }
+                _ => (), //Open, should remain open
+                //Closed should have erred in validity check
+                //invalid continuation frame in half closed should err?
+            };
 
-                if status.should_end {
-                    status.set_state(StreamStates::Closed);
-                    //todo: update active streams
-                };
-            },
-            // check_continue manages continuation expectations
-            // if end header flag not set, expect continuation, state unchanged.
-            _ => (),
+            if status.should_end {
+                status.set_state(StreamStates::Closed);
+                //todo: update active streams
+            };
         };
     }
 
