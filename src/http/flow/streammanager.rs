@@ -138,8 +138,6 @@ impl StreamManager {
         self.set_state(&stream_id, StreamStates::Closed);
     }
 
-    // fn send_frame?
-
     // Recieves a RawFrame and does validation checks between the frame and the state of the associated stream.
     // If validated, returns true. Else, returns the error thrown during validation.
     // Also updates the state of the stream implied by the recieved frames.

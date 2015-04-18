@@ -3,7 +3,7 @@
 //However, a HEADERS frame with the END_STREAM flag set can be followed by CONTINUATION frames on the same stream.
 //Logically, the CONTINUATION frames are part of the HEADERS frame.
 use super::super::frame::{RawFrame};
-use super::streamstate::StreamManager;
+use super::streammanager::StreamManager;
 use super::{StreamStates, Flags};
 
 pub fn handle_header (stream_manager: &mut StreamManager, receiving: bool, frame: &RawFrame) { // parse frame here?

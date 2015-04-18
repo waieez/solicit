@@ -103,7 +103,7 @@
 
 // Prioritization State Management
 // ???
-pub mod streamstate;
+pub mod streammanager;
 mod utils;
 mod handlers;
 

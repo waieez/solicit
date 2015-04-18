@@ -1,5 +1,5 @@
 use super::super::frame::{RawFrame};
-use super::streamstate::{StreamManager};
+use super::streammanager::{StreamManager};
 use super::StreamStates;
 
 // Checks if the incoming frame is valid for the particular stream.
