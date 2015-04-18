@@ -157,6 +157,7 @@ impl StreamManager {
         self.streams.get_mut(&stream_id)
     }
 
+    // todo: refactor open, open_idle, etc signatures to match recieving, stream_id
     fn open_idle (&mut self, stream_id: u32, receiving: bool) {// maybe receiving defaults to false?
         debug!("opening stream {:?}", &stream_id);
         //clients can only open odd streams, servers even.
@@ -276,6 +277,7 @@ impl StreamManager {
             match frame_type {
                 //Data
                 0x0 => {
+                    self.handle_data(receiving, &frame);
                 },
                 //Header
                 0x1 => {
@@ -283,6 +285,7 @@ impl StreamManager {
                 },
                 //Priority
                 0x20 => {
+                    self.handle_priority(receiving, &frame);
                 },
                 //RST
                 0x3 => {
@@ -301,8 +304,9 @@ impl StreamManager {
                 //Goaway
                 0x7 => {
                 },
-                //WindowsUpdate
+                //WindowUpdate
                 0x8 => {
+                    self.handle_window_update(receiving, &frame);
                 },
                 //Continuation
                 0x9 => {
@@ -339,14 +343,8 @@ impl StreamManager {
         // finally, extract the streamstatus
         let mut status = self.get_stream_status(&stream_id).unwrap();
 
-        // end stream set on headers should not close stream until 
-        // end headers flag recieved on header/continuation frame
+        // Priority Flag
 
-        // todo: modify streamstatus to check if the stream should end if
-        // expect continue is false and should end is true
-        // transition state if condition passes
-
-        //todo: bitmask to extract relevant flag
         //endheaders
         if Flags::EndHeaders.is_set(flag) {
             match status.state {
@@ -474,6 +472,28 @@ impl StreamManager {
                 //todo: update active streams
             };
         };
+    }
+
+    fn handle_data (&mut self, receiving: bool, frame: &RawFrame) {
+        let flag = frame.header.2;
+        let stream_id = frame.header.3;
+
+        // Flow Control
+
+        if Flags::EndStream.is_set(flag) {
+            self.close(stream_id);
+        } else {
+            // process frame?
+        };
+
+    }
+
+    fn handle_priority (&mut self, receiving: bool, frame: &RawFrame) {
+
+    }
+
+    fn handle_window_update (&mut self, receiving: bool, frame: &RawFrame) {
+
     }
 
     fn handle_rst_stream (&mut self, receiving: bool, frame: &RawFrame) {
@@ -651,6 +671,7 @@ impl StreamManager {
         //end_headers?
         //if not next frame must be continuation
         match frame_type {
+            0x0 => true, // data
             0x3 => true, // rst -> closed
             0x9 => true, // continuation -> closed if ES flag
             _ => false // 
@@ -669,6 +690,7 @@ impl StreamManager {
         // Half Closed Local (READING)
         // SEND: WINDOW_UPDATE, PRIORITY, RST Stream
         match frame_type { //TODO: clarify allowed frames
+            0x0 if receiving => true, // data
             0x9 => true, // continuation with eh?
             0x3 => true, // rst | ES flag -> closed
             0x20 => true,
@@ -693,6 +715,7 @@ impl StreamManager {
         // no longer used by peer to send frames, no longer obligated to maintain reciever flow control window
         // Error w/ STREAM_CLOSED when when recv frames not WINDOW_UPDATE, PRIORITY, RST_STREAM
         match frame_type {
+            0x0 if !receiving => true, //data
             0x9 => true, // continuation with eh?
             0x3 => true, // rst | ES flag -> closed
             0x20 => true,
@@ -995,6 +1018,20 @@ mod tests {
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Idle);
         assert_eq!(stream_manager.streams[&stream_id].expects_continuation, true);
         assert_eq!(stream_manager.streams[&stream_id].is_reserved, true);
+    }
+
+    // Receiving a Data frame with End Stream flag set should transition state from half closed to closed
+    #[test]
+    fn test_handle_data () {
+        let stream_id = 2;
+        let mut stream_manager = StreamManager::new(4, false);
+        let raw_data = build_test_rawframe(stream_id, "data", "endstream");
+
+        stream_manager.open(stream_id, true);
+        stream_manager.set_state(&stream_id, StreamStates::HalfClosedLocal);
+        stream_manager.handle_data(true, &raw_data);
+
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
     }
 
     //Tests for flow control
