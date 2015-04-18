@@ -3,7 +3,6 @@
 // TODO: Implement Control Flow, Priority
 // TODO: Refactor using try!
 // TODO: return errors where appropriate
-// TODO: import flags/bitmasks for flags from each frame
 
 //use super::super::{HttpError, HttpResult, StreamId};
 //use super::super::frame::{RawFrame, FrameHeader, unpack_header};
@@ -37,7 +36,8 @@ pub struct StreamStatus {
     dependancy: Option<u32>,
     is_exclusive: bool,
     expects_continuation: bool,
-    should_end: bool
+    should_end: bool,
+    is_reserved: bool,
     //children: Vec<u32>?
     //window_size:?
 }
@@ -51,6 +51,7 @@ impl StreamStatus {
             is_exclusive: false,
             expects_continuation: false,
             should_end: false,
+            is_reserved: false,
         }
     }
 
@@ -84,6 +85,11 @@ impl StreamStatus {
 
     fn set_end(&mut self, should_end: bool) -> &mut StreamStatus {
         self.should_end = should_end;
+        self
+    }
+
+    fn set_reserved(&mut self, reserved: bool) -> &mut StreamStatus {
+        self.is_reserved = reserved;
         self
     }
 }
@@ -256,6 +262,7 @@ impl StreamManager {
         if !is_valid {
             //return an error
             //close stream due to connection error?
+            println!("terminating...");
             false
         } else {
             // state transition, by peer
@@ -313,6 +320,7 @@ impl StreamManager {
     fn handle_header (&mut self, by_peer: bool, frame: &RawFrame) { // parse frame here?
         let flag = frame.header.2;
         let stream_id = frame.header.3;
+        let mut is_reserved = false;
 
         // first check if stream is in hashmap
         let state = match self.get_stream_status(&stream_id) {
@@ -320,8 +328,10 @@ impl StreamManager {
             Some(_status) => _status.state.clone(),
         };
 
-        // if state is idle (not in hashmap), force open
-        if state == StreamStates::Idle {
+        println!("is reserved {:?}", is_reserved);
+
+        // if state is idle and not in hashmap, force open
+        if !is_reserved && state == StreamStates::Idle {
             println!("fn handle header: opening the stream... {:?}, ln299", &stream_id);
             self.open(stream_id, by_peer);
         };
@@ -337,7 +347,7 @@ impl StreamManager {
         // transition state if condition passes
 
         //todo: bitmask to extract relevant flag
-        //endheaders
+        //endheaders TODO: FIX ME
         if Flags::EndHeaders.is_set(flag) {
             match status.state {
                 StreamStates::ReservedLocal if !by_peer => {
@@ -405,6 +415,7 @@ impl StreamManager {
         if !exists {
             self.open_idle(stream_id, by_peer);
             let mut status = self.get_stream_status(&stream_id).unwrap();
+            status.set_reserved(true);
 
             if Flags::EndHeaders.is_set(flag) {
                 if by_peer {
@@ -412,8 +423,10 @@ impl StreamManager {
                 } else {
                     status.set_state(StreamStates::ReservedLocal);
                 };
+                status.set_continue(false);
             } else {
                 status.set_continue(true);
+                println!("fn pp: set continue on stream");
             };
 
         } else {
@@ -433,12 +446,14 @@ impl StreamManager {
             status.set_continue(false);
 
             match status.state {
-                StreamStates::Idle => { // initiated by push promise
+                StreamStates::Idle if status.is_reserved => { // initiated by push promise
+                    println!("Continue w/ EH About to transition to reserved state,");
                     if by_peer {
                         status.set_state(StreamStates::ReservedRemote);
                     } else {
                         status.set_state(StreamStates::ReservedLocal);
                     };
+                    status.set_reserved(false);
                 },
 
                 StreamStates::ReservedLocal if !by_peer => { // initiated by header in reserved
@@ -449,14 +464,6 @@ impl StreamManager {
                     status.set_state(StreamStates::HalfClosedLocal);
                 },
 
-                //Transitioned from Open with ES flag
-                StreamStates::HalfClosedLocal if by_peer => {
-                    //recv continuation frame with EH flag, should close stream
-                },
-                //Transitioned from Open with ES flag
-                StreamStates::HalfClosedRemote if !by_peer => {
-                    //send continuation frame with EH should, should close stream
-                }
                 _ => (), //Open, should remain open
                 //Closed should have erred in validity check
                 //invalid continuation frame in half closed should err?
@@ -490,7 +497,11 @@ impl StreamManager {
             // If Header or Push Promise, peer attempting to open/reserve a new stream
             // Stream id's must be increasing, respond to unexpected id's with PROTOCOL_ERROR
             // currently check_valid_frame is only used on recieve
-            0x1 | 0x5 => {
+            0x1 => {
+                //todo refactor:
+                true // handled by header handler
+            },
+            0x5 => {
                 self.check_valid_open_request(stream_id, by_peer)
             },
             _ => {
@@ -569,6 +580,7 @@ impl StreamManager {
             0x1 => true, // headers -> half closed local | half closed remote if ES flag
             0x3 if !by_peer => true, // rst -> closed
             0x5 => true, //push promise
+            0x9 => true, //continuation
             0x20 => true, // priority
             _ => false // PROTOCOL_ERROR
         }
@@ -969,9 +981,104 @@ mod tests {
         assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
     }
 
+    // Receiving a PP frame should transition the state to Reserved Remote
+    #[test]
+    fn test_handle_push_promise () {
+        let stream_id = 2;
+        let mut stream_manager = StreamManager::new(4, false);
+        let raw_ppromise = build_test_rawframe(stream_id, "pushpromise", "none");
+        let raw_continue_end = build_test_rawframe(stream_id, "continuation", "endheaders");
+
+        stream_manager.handle_push_promise(true, &raw_ppromise);
+
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Idle);
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, true);
+        assert_eq!(stream_manager.streams[&stream_id].is_reserved, true);
+    }
+
+    //Tests for flow control
+    //todo: refactor tests to be less redudant while maintaining integration garuntees
+
+    // Idle -> Open -> Closed
+    #[test]
+    fn test_simple_integration () {
+        let stream_id = 2;
+        let mut stream_manager = StreamManager::new(4, false);
+        let raw_header = build_test_rawframe(stream_id, "headers", "none");
+        let raw_continue_end = build_test_rawframe(stream_id, "continuation", "endheaders");
+        let raw_rst = build_test_rawframe(stream_id, "rststream", "none");
+
+        stream_manager.recv_frame(&raw_header);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Open);
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, true);
+
+        stream_manager.recv_frame(&raw_continue_end);
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Open);
+
+        stream_manager.recv_frame(&raw_rst);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
+    }
+
+    // Idle -> ResRemote -> HalfClosed Local -> Closed
+    #[test]
+    fn test_simple_push_promise_integration () {
+        let stream_id = 2;
+        let mut stream_manager = StreamManager::new(4, false);
+        let raw_ppromise = build_test_rawframe(stream_id, "pushpromise", "endheaders");
+        let raw_header = build_test_rawframe(stream_id, "headers", "endheaders");
+        let raw_rst = build_test_rawframe(stream_id, "rststream", "none");
+
+        // Peer Reserves Stream, RECV PP w/ EH flag set on continuation frame
+        stream_manager.recv_frame(&raw_ppromise);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::ReservedRemote);
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
+        assert_eq!(stream_manager.streams[&stream_id].is_reserved, true);
+
+        // peer sends headers, transitions to half closed local
+        stream_manager.recv_frame(&raw_header);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::HalfClosedLocal);
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
+
+        //Recv a rst frame, transition to closed
+        stream_manager.recv_frame(&raw_rst);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
+    }
+
+    #[test]
+    fn test_push_promise_integration_with_continuation () {
+        let stream_id = 2;
+        let mut stream_manager = StreamManager::new(4, false);
+        let raw_ppromise = build_test_rawframe(stream_id, "pushpromise", "none");
+        let raw_header = build_test_rawframe(stream_id, "headers", "endstream");
+        let raw_continue_end = build_test_rawframe(stream_id, "continuation", "endheaders");
+        let raw_rst = build_test_rawframe(stream_id, "rststream", "none");
+
+        // Peer Reserves Stream, RECV PP w/ EH flag set on continuation frame
+        //State should be Idle until continuation with EH flag set
+        stream_manager.recv_frame(&raw_ppromise);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Idle);
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, true);
+        assert_eq!(stream_manager.streams[&stream_id].is_reserved, true);
+
+        //Recv a continuation frame with EH, transition to reserved state
+        stream_manager.recv_frame(&raw_continue_end);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::ReservedRemote);
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
+
+        //Recv header transition stream until continuation ends
+        stream_manager.recv_frame(&raw_header);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::ReservedRemote);
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, true);
+
+
+        //Recv a continuation frame with EH, transition to reserved half closed
+        stream_manager.recv_frame(&raw_continue_end);
+        assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
+        assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
+    }
 
     // Test for Data Frames
 
     // Connection Errors should close a stream
-
 }
