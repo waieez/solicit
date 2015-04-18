@@ -104,6 +104,7 @@
 // Prioritization State Management
 // ???
 pub mod streammanager;
+pub mod prioritymanager;
 mod utils;
 mod handlers;
 

@@ -22,9 +22,9 @@ pub struct StreamManager {
     // Can reduce max streams. but must either close streams or wait for them to close.
     last_server_id: u32,
     last_client_id: u32,
-    pub max_concurrent_streams: u32, //config?
-    pub streams: HashMap<u32, StreamStatus>, //streams should perhaps default to idle
-    is_server: bool, // use localidentity instead of boolean?
+    max_concurrent_streams: u32, //config?
+    streams: HashMap<u32, StreamStatus>,
+    is_server: bool, // use enum instead of boolean?
 }
 
 // Perhaps could be used as an abstraction on top of the connection
@@ -98,10 +98,9 @@ impl StreamManager {
         };
         // else err, tried to manually open a stream that has transitioned
     }
-
-    // fn open_half_closed?
-
-    // peer argument should be more descriptive
+    
+    // Tests if the direction of the inbound/outbound frame is consistent with, the id of the stream
+    // Leaving this method in stream manager keeps many of the stream manager's fields private
     pub fn check_valid_open_request (&mut self, stream_id: u32, receiving: bool) -> bool {
         match receiving {
             //RECV
@@ -142,6 +141,7 @@ impl StreamManager {
     // If validated, returns true. Else, returns the error thrown during validation.
     // Also updates the state of the stream implied by the recieved frames.
     pub fn handle_frame (&mut self, receiving: bool, frame: &RawFrame) -> bool {
+        // note: handle frame could be moved to handlers. more ergonomic here
         // What happens if the raw frame to be processed errors? Connection Error and Close Stream?
 
         // let length = frame.header.0;
@@ -210,9 +210,11 @@ impl StreamManager {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
+    // todo: refactor tests
+    // would love to move tests into own module, naive export requires exposure of multiple struct fields.
+
     use super::super::super::frame::{RawFrame, pack_header};
     use super::super::{StreamStates, Flags, utils, handlers};
     use super::{
