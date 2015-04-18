@@ -103,11 +103,9 @@
 
 // Prioritization State Management
 // ???
-
-#[allow(unused_variables)]
-#[allow(dead_code)] // enabled for terminal legibility
 pub mod streamstate;
 mod utils;
+mod handlers;
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub enum StreamStates {
@@ -149,6 +147,7 @@ pub struct StreamStatus {
     //children: Vec<u32>?
     //window_size:?
 }
+
 
 impl StreamStatus {
     fn new () -> StreamStatus {

@@ -1,4 +1,4 @@
-use super::super::frame::{RawFrame, Flag};
+use super::super::frame::{RawFrame};
 use super::streamstate::{StreamManager};
 use super::StreamStates;
 

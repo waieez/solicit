@@ -9,14 +9,10 @@
 //use super::super::frame::{RawFrame, FrameHeader, unpack_header};
 
 use std::collections::HashMap;
-use super::super::frame::{RawFrame, Flag};
-use super::{StreamStates, StreamStatus, Flags};
+use super::super::frame::{RawFrame};
+use super::{StreamStates, StreamStatus};
 use super::utils;
-
-// enum LocalIdentity { // needs a better name
-//     Client,
-//     Server
-// }
+use super::handlers;
 
 pub struct StreamManager {
     // Stream Concurrency
@@ -66,7 +62,7 @@ impl StreamManager {
     }
 
     // todo: refactor open, open_idle, etc signatures to match recieving, stream_id
-    fn open_idle (&mut self, stream_id: u32, receiving: bool) {
+    pub fn open_idle (&mut self, stream_id: u32, receiving: bool) {
         //clients can only open odd streams, servers even.
         //potentially create streams using this api.
         if self.check_valid_open_request(stream_id, receiving) { // checked before already in check_valid_frame
@@ -81,7 +77,7 @@ impl StreamManager {
     }
 
     // API to manually set the state of a stream to be open (if stream id supplied is valid)
-    fn open (&mut self, stream_id: u32, receiving: bool) {// maybe defaults to false?
+    pub fn open (&mut self, stream_id: u32, receiving: bool) {// maybe defaults to false?
 
         //TODO: Check for Max Concurrency
 
@@ -172,26 +168,26 @@ impl StreamManager {
             match frame_type {
                 //Data
                 0x0 => {
-                    self.handle_data(receiving, &frame);
+                    handlers::handle_data(self, receiving, &frame);
                 },
                 //Header
                 0x1 => {
-                    self.handle_header(receiving, &frame);
+                    handlers::handle_header(self, receiving, &frame);
                 },
                 //Priority
                 0x20 => {
-                    self.handle_priority(receiving, &frame);
+                    handlers::handle_priority(self, receiving, &frame);
                 },
                 //RST
                 0x3 => {
-                    self.handle_rst_stream(receiving, &frame);
+                    handlers::handle_rst_stream(self, receiving, &frame);
                 },
                 //Setting
                 0x4 => {
                 },
                 //PushPromise
                 0x5 => {
-                    self.handle_push_promise(receiving, &frame);
+                    handlers::handle_push_promise(self, receiving, &frame);
                 },
                 //Ping
                 0x6 => {
@@ -201,11 +197,11 @@ impl StreamManager {
                 },
                 //WindowUpdate
                 0x8 => {
-                    self.handle_window_update(receiving, &frame);
+                    handlers::handle_window_update(self, receiving, &frame);
                 },
                 //Continuation
                 0x9 => {
-                    self.handle_continuation(receiving, &frame);
+                    handlers::handle_continuation(self, receiving, &frame);
                 },
                 _ => {
                     // should not enter here
@@ -214,199 +210,13 @@ impl StreamManager {
             true
         }
     }
-
-    // Assumes valid header frame for state
-    //A HEADERS frame carries the END_STREAM flag that signals the end of a stream.
-    //However, a HEADERS frame with the END_STREAM flag set can be followed by CONTINUATION frames on the same stream.
-    //Logically, the CONTINUATION frames are part of the HEADERS frame.
-    fn handle_header (&mut self, receiving: bool, frame: &RawFrame) { // parse frame here?
-        let flag = frame.header.2;
-        let stream_id = frame.header.3;
-
-        // first check if stream is in hashmap
-        let state = match self.get_stream_status(&stream_id) {
-            None => StreamStates::Idle,
-            Some(_status) => _status.state.clone(),
-        };
-
-        // if state is idle and not in hashmap, force open
-        // collision with push promise should not be an issue, since push promises with EH flag set transitions to reserved states
-        // also, header would be rejected by continuation checks if the EH flag is not set
-        if state == StreamStates::Idle {
-            self.open(stream_id, receiving);
-        };
-
-        // finally, extract the streamstatus
-        let mut status = self.get_stream_status(&stream_id).unwrap();
-
-        // Priority Flag
-
-        if Flags::EndHeaders.is_set(flag) {
-            match status.state {
-                StreamStates::ReservedLocal if !receiving => {
-                    status.set_state(StreamStates::HalfClosedRemote);
-                },
-
-                StreamStates::ReservedRemote if receiving => {
-                    status.set_state(StreamStates::HalfClosedLocal);
-                },
-                _ => {// Has already, transitioned to Open from Idle and should stay open
-                    // Half Closed, Closed should have erred in validiy checks
-                }
-            }
-            status.set_continue(false);
-        } else {
-            status.set_continue(true);
-        };
-        // increment active stream count
-
-        if Flags::EndStream.is_set(flag) {
-            status.set_end(true);
-
-            match status.state {
-                //if open and send/recv end stream flag
-                StreamStates::Open => {
-                    if receiving {
-                        // if recv -> half_closed remote 
-                        status.set_state(StreamStates::HalfClosedRemote);
-                    } else {
-                        //if send -> half closed local
-                        status.set_state(StreamStates::HalfClosedLocal);
-                    }
-                },
-
-                // If Half Closed, and End Stream Flag and End Header Flag Set, close stream.
-                StreamStates::HalfClosedRemote |
-                StreamStates::HalfClosedLocal 
-                if status.expects_continuation == false &&
-                status.should_end == true => {
-                    status.set_state(StreamStates::Closed);
-                    //decrement active stream count
-                },
-
-                _ => {
-                    // should probably err
-                }
-            };
-        };
-    }
-
-    // TODO: PP has very nuanced implementation details, take care that they are covered
-    // eg ignoring/rejecting pp's
-    fn handle_push_promise (&mut self, receiving: bool, frame: &RawFrame) {
-        let flag = frame.header.2;
-        let stream_id = frame.header.3;
-        
-        // first check if stream is in hashmap
-        let exists = match self.get_stream_status(&stream_id) {
-            None => false,
-            Some(_status) => true,
-        };
-
-        // if state is idle (not in hashmap), reserve it
-        if !exists {
-            self.open_idle(stream_id, receiving);
-            let mut status = self.get_stream_status(&stream_id).unwrap();
-            status.set_reserved(true);
-
-            if Flags::EndHeaders.is_set(flag) {
-                if receiving {
-                    status.set_state(StreamStates::ReservedRemote);
-                } else {
-                    status.set_state(StreamStates::ReservedLocal);
-                };
-                status.set_continue(false);
-            } else {
-                status.set_continue(true);
-            };
-
-        } else {
-            // should err with validity check
-        };
-
-    }
-
-    // Continuation frames can only follow push promise or headers frames.
-    // they may carry a end headers flag which could transition to halfclosed states
-    fn handle_continuation (&mut self, receiving: bool, frame: &RawFrame) {
-        let flag = frame.header.2;
-        let stream_id = frame.header.3;
-        let status = self.get_stream_status(&stream_id).unwrap();
-
-        if Flags::EndHeaders.is_set(flag) {
-            status.set_continue(false);
-
-            match status.state {
-                StreamStates::Idle if status.is_reserved => { // initiated by push promise
-                    if receiving {
-                        status.set_state(StreamStates::ReservedRemote);
-                    } else {
-                        status.set_state(StreamStates::ReservedLocal);
-                    };
-                    status.set_reserved(false);
-                },
-
-                StreamStates::ReservedLocal if !receiving => { // initiated by header in reserved
-                    status.set_state(StreamStates::HalfClosedRemote);
-                },
-
-                StreamStates::ReservedRemote if receiving => { // initiated by header in reserved
-                    status.set_state(StreamStates::HalfClosedLocal);
-                },
-
-                _ => (), //Open, should remain open
-                //Closed should have erred in validity check
-                //invalid continuation frame in half closed should err?
-            };
-
-            if status.should_end {
-                status.set_state(StreamStates::Closed);
-                //todo: update active streams
-            };
-        };
-    }
-
-    // Data frames are subject to flow control, 
-    // half-closed streams transition to closed if the End Stream flag is set
-    fn handle_data (&mut self, receiving: bool, frame: &RawFrame) {
-        let flag = frame.header.2;
-        let stream_id = frame.header.3;
-
-        // Flow Control
-
-        if Flags::EndStream.is_set(flag) {
-            self.close(stream_id);
-        } else {
-            // process frame?
-        };
-
-    }
-
-    //Updates the priority status fields of a given stream
-    fn handle_priority (&mut self, receiving: bool, frame: &RawFrame) {
-        //actually requires parsing the frame to extract relevant info
-        //the streams it depends on
-        //exclusive?
-    }
-
-    //modifes flow control for the stream
-    fn handle_window_update (&mut self, receiving: bool, frame: &RawFrame) {
-        //also requires parsing the frame to extract information
-    }
-
-    // Closes the stream
-    fn handle_rst_stream (&mut self, receiving: bool, frame: &RawFrame) {
-        // first check if stream is in hashmap
-        let stream_id = frame.header.3;
-        self.close(stream_id);
-    }
 }
 
 
 #[cfg(test)]
 mod tests {
     use super::super::super::frame::{RawFrame, pack_header};
-    use super::super::{StreamStates, Flags, utils};
+    use super::super::{StreamStates, Flags, utils, handlers};
     use super::{
         StreamManager,
     };
@@ -565,7 +375,7 @@ mod tests {
         let mut stream_manager = StreamManager::new(4, false);
         let raw_header = build_test_rawframe(stream_id, "headers", "none");
 
-        stream_manager.handle_header(true, &raw_header);
+        handlers::handle_header(&mut stream_manager, true, &raw_header);
 
         let updated_server_id = stream_manager.last_server_id;
         let stream_status = stream_manager.get_stream_status(&stream_id).unwrap();
@@ -584,7 +394,7 @@ mod tests {
         let mut stream_manager = StreamManager::new(4, false);
         let raw_header = build_test_rawframe(stream_id, "headers", "endstream");
 
-        stream_manager.handle_header(true, &raw_header);
+        handlers::handle_header(&mut stream_manager, true, &raw_header);
 
         let updated_server_id = stream_manager.last_server_id;
         let stream_status = stream_manager.get_stream_status(&stream_id).unwrap();
@@ -606,7 +416,7 @@ mod tests {
         let raw_rst_stream = build_test_rawframe(stream_id, "rststream", "none");
 
         stream_manager.open(stream_id, false);
-        stream_manager.handle_rst_stream(false, &raw_rst_stream);
+        handlers::handle_rst_stream(&mut stream_manager, false, &raw_rst_stream);
 
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
     }
@@ -623,7 +433,7 @@ mod tests {
 
         assert_eq!(stream_manager.streams[&stream_id].expects_continuation, true);
 
-        stream_manager.handle_continuation(true, &raw_continue_end);
+        handlers::handle_continuation(&mut stream_manager, true, &raw_continue_end);
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Open);
         assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
     }
@@ -636,7 +446,7 @@ mod tests {
         let raw_ppromise = build_test_rawframe(stream_id, "pushpromise", "none");
         let raw_continue_end = build_test_rawframe(stream_id, "continuation", "endheaders");
 
-        stream_manager.handle_push_promise(true, &raw_ppromise);
+        handlers::handle_push_promise(&mut stream_manager, true, &raw_ppromise);
 
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Idle);
         assert_eq!(stream_manager.streams[&stream_id].expects_continuation, true);
@@ -652,7 +462,7 @@ mod tests {
 
         stream_manager.open(stream_id, true);
         stream_manager.set_state(&stream_id, StreamStates::HalfClosedLocal);
-        stream_manager.handle_data(true, &raw_data);
+        handlers::handle_data(&mut stream_manager, true, &raw_data);
 
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
     }

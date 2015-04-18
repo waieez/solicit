@@ -10,6 +10,9 @@ pub mod frame;
 pub mod transport;
 pub mod connection;
 pub mod session;
+
+#[allow(unused_variables)]
+#[allow(dead_code)]
 pub mod flow;
 
 /// An alias for the type that represents the ID of an HTTP/2 stream
