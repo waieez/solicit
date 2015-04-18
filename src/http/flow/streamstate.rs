@@ -1,5 +1,6 @@
 //! This module implements stream state management to help discover connection errors before an expensive parse is made.
 //! It manages the state of the streams associated with the connection
+
 // TODO: Implement Control Flow, Priority
 // TODO: Refactor using try!
 // TODO: return errors where appropriate
@@ -135,13 +136,13 @@ impl StreamManager {
             max_concurrent_streams: max_streams,
             streams: HashMap::new(),
             is_server: is_server
+            //enable push?
         }
         //should perhaps initialize the first stream to be open as well.
     }
 
     // helper method to set the state of a stream.
     fn set_state (&mut self, stream_id: &u32, state: StreamStates) {
-        debug!("new state {:?}", &stream_id);
         match self.get_stream_status(&stream_id) {
             Some(stream) => {
                 stream.set_state(state);
@@ -158,11 +159,9 @@ impl StreamManager {
     }
 
     // todo: refactor open, open_idle, etc signatures to match recieving, stream_id
-    fn open_idle (&mut self, stream_id: u32, receiving: bool) {// maybe receiving defaults to false?
-        debug!("opening stream {:?}", &stream_id);
+    fn open_idle (&mut self, stream_id: u32, receiving: bool) {
         //clients can only open odd streams, servers even.
         //potentially create streams using this api.
-        println!("fn open_idle: inside open idle..., ln134");
         if self.check_valid_open_request(stream_id, receiving) { // checked before already in check_valid_frame
             self.streams.insert(stream_id, StreamStatus::new());
 
@@ -187,14 +186,11 @@ impl StreamManager {
         // Exhaustively ensures the stream has not already been set
         // Checks if stream_id provided is valid
         if not_set {
-            println!("fn open: pass control to open_idle");
             self.open_idle(stream_id, receiving);
         };
 
-        println!("fn open: called open on stream: {:?} {:?}, ln 163", &stream_id, not_set);
         // And only opens the stream if it was originally set to idle
         if self.streams[&stream_id].state == StreamStates::Idle {
-            println!("fn open: stream state is idle.., forcing open..", );
             self.set_state(&stream_id, StreamStates::Open);
         };
         // else err, tried to manually open a stream that has transitioned
@@ -207,13 +203,11 @@ impl StreamManager {
         match receiving {
             //RECV
             true => {
-                println!("check valid for recv frame");
                 // server is receiving a client request to open a stream
                 if self.is_server && stream_id > self.last_client_id && stream_id & 2 == 1 {
                     true
                 // client is receiving a server request to open a stream
                 } else if !self.is_server && stream_id > self.last_server_id && stream_id % 2 == 0 {
-                    println!("check recv for client, {:?} {:?}", stream_id, self.last_server_id);
                     true
                 } else {
                     false // should err ?
@@ -222,16 +216,13 @@ impl StreamManager {
 
             //SEND
             false => {
-                println!("check valid for send frame");
                 // server attempting to open a new stream
                 if self.is_server && stream_id > self.last_server_id && stream_id % 2 == 0 {
                     true
                 // client attempting to open a new stream
                 } else if !self.is_server && stream_id > self.last_client_id && stream_id % 2 == 1 {
-                    println!("check send for client, {:?} {:?}", stream_id, self.last_client_id);
                     true
                 } else {
-                    println!("oops, conditions not met, bad open");
                     false // should err ?
                 }
             },
@@ -241,7 +232,6 @@ impl StreamManager {
     // API to manually set the state of a stream to be closed
     pub fn close (&mut self, stream_id: u32) {
         //potentially close streams using this api.
-        debug!("fn close: closing stream {:?}, ln210", &stream_id);
         self.set_state(&stream_id, StreamStates::Closed);
     }
 
@@ -261,12 +251,10 @@ impl StreamManager {
         // If the frame is valid, (new stream?, continuation?, otherwise still valid?)
         let is_valid = self.check_valid_frame(&frame, receiving); //receiving?
 
-        println!("fn handle_frame: is the frame valid? {:?}, ln230", is_valid);
-
         if !is_valid {
             //return an error
             //close stream due to connection error?
-            println!("terminating...");
+            debug!("failed initial checks, terminating... stream id: {:?}, frame type: {:?}, ", stream_id, frame_type);
             false
         } else {
             // state transition, by peer
@@ -335,8 +323,9 @@ impl StreamManager {
         };
 
         // if state is idle and not in hashmap, force open
+        // collision with push promise should not be an issue, since push promises with EH flag set transitions to reserved states
+        // also, header would be rejected by continuation checks if the EH flag is not set
         if state == StreamStates::Idle {
-            println!("fn handle header: opening the stream... {:?}, ln299", &stream_id);
             self.open(stream_id, receiving);
         };
 
@@ -345,7 +334,6 @@ impl StreamManager {
 
         // Priority Flag
 
-        //endheaders
         if Flags::EndHeaders.is_set(flag) {
             match status.state {
                 StreamStates::ReservedLocal if !receiving => {
@@ -365,8 +353,6 @@ impl StreamManager {
         };
         // increment active stream count
 
-        //todo: bitmask to extract relevant flag
-        //endstream
         if Flags::EndStream.is_set(flag) {
             status.set_end(true);
 
@@ -388,6 +374,7 @@ impl StreamManager {
                 if status.expects_continuation == false &&
                 status.should_end == true => {
                     status.set_state(StreamStates::Closed);
+                    //decrement active stream count
                 },
 
                 _ => {
@@ -424,7 +411,6 @@ impl StreamManager {
                 status.set_continue(false);
             } else {
                 status.set_continue(true);
-                println!("fn pp: set continue on stream");
             };
 
         } else {
@@ -445,7 +431,6 @@ impl StreamManager {
 
             match status.state {
                 StreamStates::Idle if status.is_reserved => { // initiated by push promise
-                    println!("Continue w/ EH About to transition to reserved state,");
                     if receiving {
                         status.set_state(StreamStates::ReservedRemote);
                     } else {
@@ -474,6 +459,8 @@ impl StreamManager {
         };
     }
 
+    // Data frames are subject to flow control, 
+    // half-closed streams transition to closed if the End Stream flag is set
     fn handle_data (&mut self, receiving: bool, frame: &RawFrame) {
         let flag = frame.header.2;
         let stream_id = frame.header.3;
@@ -488,14 +475,19 @@ impl StreamManager {
 
     }
 
+    //Updates the priority status fields of a given stream
     fn handle_priority (&mut self, receiving: bool, frame: &RawFrame) {
-
+        //actually requires parsing the frame to extract relevant info
+        //the streams it depends on
+        //exclusive?
     }
 
+    //modifes flow control for the stream
     fn handle_window_update (&mut self, receiving: bool, frame: &RawFrame) {
-
+        //also requires parsing the frame to extract information
     }
 
+    // Closes the stream
     fn handle_rst_stream (&mut self, receiving: bool, frame: &RawFrame) {
         // first check if stream is in hashmap
         let stream_id = frame.header.3;
@@ -504,7 +496,7 @@ impl StreamManager {
 
     // Checks if the incoming frame is valid for the particular stream.
     // First identifies if incoming frame is associated with a stream
-    // If not and is a valid header, opens the stream
+    // If not and is a valid header or push promise, opens the stream in the appropriate state
     // Else, checks to see if it is a continuation frame
     // If not, does a final check for validity
     pub fn check_valid_frame(&mut self, frame: &RawFrame, receiving: bool) -> bool {
@@ -522,7 +514,6 @@ impl StreamManager {
                 true // handled by header handler
             },
             0x5 => {
-                println!("do we even get in here?");
                 self.check_valid_open_request(stream_id, receiving)
             },
             _ => {
@@ -530,7 +521,6 @@ impl StreamManager {
             }
         };
 
-        println!("fn chk valid: valid so far? {:?}", valid_so_far);
         if valid_so_far {
             self.check_state(receiving, &frame)
         } else {
@@ -538,6 +528,9 @@ impl StreamManager {
         }
     }
 
+    // Checks if the frame sent/recieved is a continuation frame if continuation is expected
+    // Also checks if the current frame is a continuation frame and the stream is not expecting one
+    // Currently, this check is run against all frames excluding headers and push promise frames
     fn check_continue (&mut self, frame: &RawFrame) -> bool {
 
         let frame_type = frame.header.1;
@@ -551,7 +544,6 @@ impl StreamManager {
             },
             Some(status) => {
                 // If stream is expecting continuation frame. Check if this is a continuation frame,
-                println!("status: {:?} {:?}", status.expects_continuation, frame_type);
                 match status.expects_continuation  {
                     true if frame_type != 0x9 => false, //should err
                     false if frame_type == 0x9 => false, //connection err?
@@ -564,6 +556,8 @@ impl StreamManager {
         }
     }
 
+    // Checks if the frame sent/recieved is valid for a given state
+    // This is the last of a series of checks against unexpected stream ids and the continuation status of a stream
     fn check_state (&mut self, receiving: bool, frame: &RawFrame) -> bool {
         // by the time check state is called, valid open request or valid continuation
         let stream_id = frame.header.3;
@@ -572,8 +566,6 @@ impl StreamManager {
             None => StreamStates::Idle,
             Some(status) => status.state.clone(),
         };
-
-        println!("State is {:?}", state);
 
         match state {
             StreamStates::Idle => self.check_idle(receiving, &frame),
