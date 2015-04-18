@@ -105,10 +105,10 @@ impl Frame for ContinuationFrame {
             return None;
         }
 
-        let payload = &raw_frame.payload[..];
+        // let payload = &raw_frame.payload[..];
 
         Some(ContinuationFrame {
-            header_fragment: &raw_frame.payload[..],
+            header_fragment: raw_frame.payload[..].to_vec(),
             stream_id: stream_id,
             flags: flags
         })

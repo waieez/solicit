@@ -313,24 +313,24 @@ impl Frame for HeadersFrame {
         // If the length of payload + header + padding > max frame size, seperate this
         // into multiple frames
         // TODO: replace 16384 with MAX_FRAME_SIZE from settings frame
-        if self.payload_len() + 9 + self.padding_len.unwrap_or(0) > 16384 {
+        if self.payload_len() + 9 + (self.padding_len.unwrap_or(0) as u32) > 16384 {
             //Break the payload first
             //can't just access the end of the vec, check for where to slice the fragment
             //the pad length, stream dep, and weight have already been written, so we
             //only have room for max frame size - 9(header size) - payload field size
-            let mut chunk_size = min(&self.header_fragment.len(), 16384 - 9 - (self.payload_len() - &self.header_fragment.len()));
-            let mut (data, remainder) = (&self.header_fragment[..chunk_size], &self.header_fragment[chunk_size..]);
+            let mut chunk_size = min(self.header_fragment.len(), (16384 - 9) as usize - (self.payload_len() as usize - &self.header_fragment.len()));
+            let (mut data, mut remainder) = (self.header_fragment[..chunk_size].to_vec(), &self.header_fragment[chunk_size..]);
             while remainder.len() > 0{
-                buf.extend(ContinuationFrame::new(data, self.stream_id).serialize().into_iter());
-                chunk_size = min(remainder.len(), 16384 - 9);
-                data = remainder[..chunk_size];
-                remainder = remainder[chunk_size..];
+                buf.extend(ContinuationFrame::new(data.to_vec(), self.stream_id).serialize().into_iter());
+                chunk_size = min(remainder.len(), (16384 - 9) as usize);
+                data = remainder[..chunk_size].to_vec();
+                remainder = &remainder[chunk_size..];
             }
             // then the padding
             if padded {
-                chunk_size = min(self.padding_len.unwrap_or(0), 16384 - 9 - data.len());
+                chunk_size = min(self.padding_len.unwrap_or(0) as usize, 16384 - 9 - data.len());
                 for _ in 0..chunk_size { data.push(0) };
-                let mut padding_len = self.padding_len.unwrap_or(0) - chunk_size;
+                let mut padding_len = self.padding_len.unwrap_or(0) as usize - chunk_size;
                 while padding_len > 0 {
                     buf.extend(ContinuationFrame::new(data, self.stream_id).serialize().into_iter());
                     chunk_size = min(padding_len, 16384 - 9);
