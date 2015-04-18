@@ -107,3 +107,97 @@
 #[allow(unused_variables)]
 #[allow(dead_code)] // enabled for terminal legibility
 pub mod streamstate;
+mod utils;
+
+#[derive(Hash, Eq, PartialEq, Debug, Clone)]
+pub enum StreamStates {
+    Idle,
+    Open,
+    Closed,
+    ReservedLocal,
+    ReservedRemote,
+    HalfClosedLocal,
+    HalfClosedRemote,
+}
+
+pub enum Flags {
+    EndStream = 0x1,
+    EndHeaders = 0x4,
+    Padded = 0x8,
+    Priority = 0x20,
+}
+
+impl Flags {
+    fn bitmask(self) -> u8 {
+        self as u8
+    }
+    // Tests if the given flag is set for the frame.
+    fn is_set(self, flags: u8) -> bool {
+        (flags & self.bitmask()) != 0
+    }
+}
+
+#[derive(Hash, Eq, PartialEq, Debug)]
+pub struct StreamStatus {
+    pub state: StreamStates,
+    priority: Option<u32>,
+    dependancy: Option<u32>,
+    is_exclusive: bool,
+    pub expects_continuation: bool,
+    should_end: bool,
+    is_reserved: bool,
+    //children: Vec<u32>?
+    //window_size:?
+}
+
+impl StreamStatus {
+    fn new () -> StreamStatus {
+        StreamStatus {
+            state: StreamStates::Idle,
+            priority: None,
+            dependancy: None,
+            is_exclusive: false,
+            expects_continuation: false,
+            should_end: false,
+            is_reserved: false,
+        }
+    }
+
+    fn set_state (&mut self, state: StreamStates) -> &mut StreamStatus {
+        self.state = state;
+        self
+    }
+
+    fn set_priority (&mut self, priority: Option<u32>) -> &mut StreamStatus {
+        self.priority = priority;
+        self
+    }
+
+    fn set_dependancy (&mut self, dependancy: Option<u32>, is_exclusive: bool) -> &mut StreamStatus {
+        self.dependancy = dependancy;
+        // setting a stream as dependant and exclusive will affect all children of dependancy
+        self.is_exclusive = is_exclusive;
+        self
+    }
+
+    fn remove_dependancies (&mut self) -> &mut StreamStatus {
+        self.dependancy = None;
+        self.is_exclusive = false;
+        self
+    }
+
+    fn set_continue(&mut self, expects_continuation: bool) -> &mut StreamStatus {
+        self.expects_continuation = expects_continuation;
+        self
+    }
+
+    fn set_end(&mut self, should_end: bool) -> &mut StreamStatus {
+        self.should_end = should_end;
+        self
+    }
+
+    fn set_reserved(&mut self, reserved: bool) -> &mut StreamStatus {
+        self.is_reserved = reserved;
+        self
+    }
+}
