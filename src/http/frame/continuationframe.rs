@@ -50,6 +50,15 @@ impl ContinuationFrame {
         }
     }
 
+    /// Creates a new `ContinuationFrame` with the given header fragment and stream
+    /// ID. End header is set as true.
+    pub fn with_end(fragment: Vec<u8>, stream_id: StreamId) -> ContinuationFrame {
+        ContinuationFrame {
+            header_fragment: fragment,
+            stream_id: stream_id,
+            flags: 0x4,
+        }
+    }
     /// Returns whether this frame ends the headers. If not, there MUST be a
     /// number of follow up CONTINUATION frames that send the rest of the
     /// header data.

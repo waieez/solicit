@@ -55,7 +55,7 @@ pub use self::pingframe::{
 pub use self::continuationframe::{
     ContinuationFlag,
     ContinuationFrame,
-}
+};
 
 pub mod frames;
 mod test;

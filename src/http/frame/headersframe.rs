@@ -7,6 +7,11 @@ use super::frames::{
     RawFrame,
     FrameHeader
 };
+use super::{
+    ContinuationFrame,
+    ContinuationFlag,
+};
+use std::cmp::min;
 
 /// An enum representing the flags that a `HeadersFrame` can have.
 /// The integer representation associated to each variant is that flag's
@@ -305,11 +310,45 @@ impl Frame for HeadersFrame {
             };
             buf.extend(dep_buf.to_vec().into_iter());
         }
-        // Now the actual headers fragment
-        buf.extend(self.header_fragment.clone().into_iter());
-        // Finally, add the trailing padding, if required
-        if padded {
-            for _ in 0..self.padding_len.unwrap_or(0) { buf.push(0); }
+        // If the length of payload + header + padding > max frame size, seperate this
+        // into multiple frames
+        // TODO: replace 16384 with MAX_FRAME_SIZE from settings frame
+        if self.payload_len() + 9 + self.padding_len.unwrap_or(0) > 16384 {
+            //Break the payload first
+            //can't just access the end of the vec, check for where to slice the fragment
+            //the pad length, stream dep, and weight have already been written, so we
+            //only have room for max frame size - 9(header size) - payload field size
+            let mut chunk_size = min(&self.header_fragment.len(), 16384 - 9 - (self.payload_len() - &self.header_fragment.len()));
+            let mut (data, remainder) = (&self.header_fragment[..chunk_size], &self.header_fragment[chunk_size..]);
+            while remainder.len() > 0{
+                buf.extend(ContinuationFrame::new(data, self.stream_id).serialize().into_iter());
+                chunk_size = min(remainder.len(), 16384 - 9);
+                data = remainder[..chunk_size];
+                remainder = remainder[chunk_size..];
+            }
+            // then the padding
+            if padded {
+                chunk_size = min(self.padding_len.unwrap_or(0), 16384 - 9 - data.len());
+                for _ in 0..chunk_size { data.push(0) };
+                let mut padding_len = self.padding_len.unwrap_or(0) - chunk_size;
+                while padding_len > 0 {
+                    buf.extend(ContinuationFrame::new(data, self.stream_id).serialize().into_iter());
+                    chunk_size = min(padding_len, 16384 - 9);
+                    padding_len = padding_len - chunk_size;
+                    data = Vec::with_capacity(chunk_size as usize);
+                    for _ in 0..chunk_size { data.push(0); }
+                }
+
+            }
+            buf.extend(ContinuationFrame::with_end(data, self.stream_id).serialize().into_iter());
+
+        } else {
+            // Now the actual headers fragment
+            buf.extend(self.header_fragment.clone().into_iter());
+            // Finally, add the trailing padding, if required
+            if padded {
+                for _ in 0..self.padding_len.unwrap_or(0) { buf.push(0); }
+            }
         }
 
         buf
