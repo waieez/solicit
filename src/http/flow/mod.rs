@@ -77,29 +77,6 @@
 //  If not required, advertise a flow control window of the maximum size (2^31-1)
 //  Flow control to limit memory use. However lead to suboptimal use of network resources.
 
-// Stream Priority
-
-// Initialized with Headers Frame
-// Can be modified by sending priority frames
-
-// prioritized by marking stream as dependant on another.
-
-// Stream w/ 0 deps stream dep of 0x0
-
-// Default: dependant streams are unordered.
-// Exclusive: becomes sole dependancy of parent, adopt sibling streams as children.
-
-// Child streams are only allocated resources when parent chain is closed.
-
-// Dep Weighting weight between 1 and 256
-// siblings share proportional resources if progress on parent not able to be made.
-
-// Reprioritization.
-// Dep streams move with parent if parent is reprioritized.
-
-// if moved with exclusive flag. new parent's children are adopted by moved dependency stream.
-
-// if moved to be dependant on child, child and parent switch roles. retains weight. (watchout for exclusive flag)
 
 // Prioritization State Management
 // ???

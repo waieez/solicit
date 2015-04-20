@@ -26,7 +26,7 @@ pub fn handle_header (stream_manager: &mut StreamManager, receiving: bool, frame
     // finally, extract the streamstatus
     let mut status = stream_manager.get_stream_status(&stream_id).unwrap();
 
-    // Priority Flag
+    // check for Priority Flag
 
     if Flags::EndHeaders.is_set(flag) {
         match status.state {
