@@ -142,7 +142,6 @@ impl PriorityManager {
 
     // modifies a given stream's dependancy, (child depends on parent)
     pub fn set_dependant (&mut self, child_id: u32, parent_id: u32) {
-        println!("should enter here {:?} {:?}", child_id, parent_id);
         if self.contains(&child_id) && self.contains(&parent_id) {
             if self.streams[&parent_id].is_exclusive &&
                 self.streams[&parent_id].children.len() == 1 {
@@ -160,7 +159,6 @@ impl PriorityManager {
     // exclusive child also intercepts and adopts incoming children (handled by set_dependant)
     pub fn set_as_exclusive (&mut self, child_id: u32, parent_id: u32) {
         // re-maps all children and sets flag on exclusive parent
-        println!("setting this shit as exclusive");
         let valid = self.contains(&child_id);
         let mut orphans = None;
 
@@ -232,13 +230,15 @@ impl PriorityManager {
         self.streams.contains_key(&stream_id)
     }
 
+    // detects cycles by checking the depth of the two nodes,
+    // reoranizes/inserts (sub)trees and updates depths
     fn set_dependant_stream (&mut self, node_a: u32, node_b: u32) {
 
         let child_depth = self.streams[&node_a].depth;
         let parent_depth = self.streams[&node_b].depth;
 
+        // cycles can be created by making an ancestor to be the child of a descendant
         if child_depth < parent_depth {
-            println!("depthA {:?}, depthB {:?}", child_depth, parent_depth);
             let mut ancestor = node_b;
             let difference = parent_depth - child_depth;
 
@@ -247,14 +247,15 @@ impl PriorityManager {
                 ancestor = self.streams[&ancestor].parent;
             }
 
+            // swap the positions if they are equal
+            // note: stream ids are unique and therefore should not collide
             if ancestor == node_a {
-                //todo: decrement chain's depth by the difference.
-                println!("here comes the swap!...............");
                 self.swap(node_a, node_b);
             } else {
-                println!("ancestor is {:?}, node_b is still {:?}", ancestor, node_b);
-                // no possible cycles, different ancestry
+                // different ancestry, no possible cycles
                 self.connect(node_a, node_b);
+                //update all descendants with new depths
+                self.update_tree_depths(&node_a, parent_depth+1);
             }
 
         } else {
@@ -280,10 +281,8 @@ impl PriorityManager {
         //get depths of node_a/node_b
         let depth = self.streams[&node_a].depth;
 
-        println!("depth child {:?}: {:?}, depth parent {:?}: {:?}", node_a, depth, node_b, depth+1);
-
-        self.update_tree_depths(&node_b, depth);
         //disconn node_b - node_a: node_b node_a X
+        self.update_tree_depths(&node_b, depth);
         self.disconnect(node_b, ref_a);
 
         //conn node_b - X: node_a node_b -> X
@@ -295,9 +294,9 @@ impl PriorityManager {
 
         //finally, conn node_a - node_b: node_a -> node_b -> X
         self.connect(node_a, node_b);
-        println!("connected {:?}'s parent: {:?}, {:?}'s parent: {:?}", node_a, self.streams[&node_a].parent, node_b, self.streams[&node_b].parent);
     }
 
+    // removes child's parent pointer and child from parent's set of children
     fn disconnect (&mut self, child_id: u32, parent_id: u32) {
         if parent_id > 0 { // stream 0 DNE and has no children
             self.streams.get_mut(&parent_id).unwrap().remove_child(&child_id);
@@ -305,6 +304,7 @@ impl PriorityManager {
         self.streams.get_mut(&child_id).unwrap().parent = 0;
     }
 
+    // sets child's parent pointer and adds child to parent's set of children
     fn connect (&mut self, child_id: u32, parent_id: u32) {
         let mut depth = 0;
         if parent_id > 0 { // stream 0 DNE and has no children
@@ -315,12 +315,10 @@ impl PriorityManager {
         let child = self.streams.get_mut(&child_id).unwrap()
             .set_parent(parent_id)
             .set_depth(depth+1);
-        println!("connecting {:?} to {:?} depth is now {:?}", child_id, parent_id, child.depth);
     }
 
+    // recursively updates the depth of each node in the (sub)tree
     fn update_tree_depths (&mut self, child_id: &u32, depth: u32) {
-
-        println!("updating depth of child: {:?} to depth: {:?}", child_id, depth);
 
         let mut clone = None;
         match self.streams.get_mut(child_id) {
