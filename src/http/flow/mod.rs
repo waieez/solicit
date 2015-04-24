@@ -1,73 +1,73 @@
-// This module expands Solicit's ability to track and manage stream states and priorities.
+/// This module expands Solicit's ability to track and manage stream states and priorities.
+///
+/// A "stream" is an independent, bi-directional sequence of frames exchanged between the client and server within an HTTP/2 connection. 
+/// Streams have several important characteristics:
+/// A single HTTP/2 connection can contain multiple concurrently open streams, with either endpoint interleaving frames from multiple streams.
+/// Streams can be established and used unilaterally or shared by either the client or server.
+/// Streams can be closed by either endpoint.
+/// The order in which frames are sent on a stream is significant. 
+/// Recipients process frames in the order they are received. In particular, the order of HEADERS, and DATA frames is semantically significant.
+/// Streams are identified by an integer. Stream identifiers are assigned to streams by the endpoint initiating the stream.
+///
+/// The following diagram demonstrates the state transitions triggered by sending and recieving different frames when in a particular state.
+///
+/// STREAM STATES
+///
+///                          +--------+
+///                  send PP |        | recv PP
+///                 ,--------|  idle  |--------.
+///                /         |        |         \
+///               v          +--------+          v
+///        +----------+          |           +----------+
+///        |          |          | send H /  |          |
+/// ,------| reserved |          | recv H    | reserved |------.
+/// |      | (local)  |          |           | (remote) |      |
+/// |      +----------+          v           +----------+      |
+/// |          |             +--------+             |          |
+/// |          |     recv ES |        | send ES     |          |
+/// |   send H |     ,-------|  open  |-------.     | recv H   |
+/// |          |    /        |        |        \    |          |
+/// |          v   v         +--------+         v   v          |
+/// |      +----------+          |           +----------+      |
+/// |      |   half   |          |           |   half   |      |
+/// |      |  closed  |          | send R /  |  closed  |      |
+/// |      | (remote) |          | recv R    | (local)  |      |
+/// |      +----------+          |           +----------+      |
+/// |           |                |                 |           |
+/// |           | send ES /      |       recv ES / |           |
+/// |           | send R /       v        send R / |           |
+/// |           | recv R     +--------+   recv R   |           |
+/// | send R /  `----------->|        |<-----------'  send R / |
+/// | recv R                 | closed |               recv R   |
+/// `----------------------->|        |<----------------------'
+///                          +--------+
+///
+///    send:   endpoint sends this frame
+///    recv:   endpoint receives this frame
+///
+///    H:  HEADERS frame (with implied CONTINUATIONs)
+///    PP: PUSH_PROMISE frame (with implied CONTINUATIONs)
+///    ES: END_STREAM flag
+///    R:  RST_STREAM frame
 
-// A "stream" is an independent, bi-directional sequence of frames exchanged between the client and server within an HTTP/2 connection. 
-// Streams have several important characteristics:
-// A single HTTP/2 connection can contain multiple concurrently open streams, with either endpoint interleaving frames from multiple streams.
-// Streams can be established and used unilaterally or shared by either the client or server.
-// Streams can be closed by either endpoint.
-// The order in which frames are sent on a stream is significant. 
-// Recipients process frames in the order they are received. In particular, the order of HEADERS, and DATA frames is semantically significant.
-// Streams are identified by an integer. Stream identifiers are assigned to streams by the endpoint initiating the stream.
-
-// The following diagram demonstrates the state transitions triggered by sending and recieving different frames when in a particular state.
-
-// STREAM STATES
-
-//                          +--------+
-//                  send PP |        | recv PP
-//                 ,--------|  idle  |--------.
-//                /         |        |         \
-//               v          +--------+          v
-//        +----------+          |           +----------+
-//        |          |          | send H /  |          |
-// ,------| reserved |          | recv H    | reserved |------.
-// |      | (local)  |          |           | (remote) |      |
-// |      +----------+          v           +----------+      |
-// |          |             +--------+             |          |
-// |          |     recv ES |        | send ES     |          |
-// |   send H |     ,-------|  open  |-------.     | recv H   |
-// |          |    /        |        |        \    |          |
-// |          v   v         +--------+         v   v          |
-// |      +----------+          |           +----------+      |
-// |      |   half   |          |           |   half   |      |
-// |      |  closed  |          | send R /  |  closed  |      |
-// |      | (remote) |          | recv R    | (local)  |      |
-// |      +----------+          |           +----------+      |
-// |           |                |                 |           |
-// |           | send ES /      |       recv ES / |           |
-// |           | send R /       v        send R / |           |
-// |           | recv R     +--------+   recv R   |           |
-// | send R /  `----------->|        |<-----------'  send R / |
-// | recv R                 | closed |               recv R   |
-// `----------------------->|        |<----------------------'
-//                          +--------+
-
-//    send:   endpoint sends this frame
-//    recv:   endpoint receives this frame
-
-//    H:  HEADERS frame (with implied CONTINUATIONs)
-//    PP: PUSH_PROMISE frame (with implied CONTINUATIONs)
-//    ES: END_STREAM flag
-//    R:  RST_STREAM frame
-
-// API for handing stream states
-//
-// A StreamManager is created with every established connection and maps/tracks the appropriate stream state for the connection.
-// The struct contains many methods used to track and update the state of a given stream.
-//
-// First, a frame checked for validity, 
-// Next the frame is 'handled', updating the stream state as appropriate.
-// TODO: If an error is triggered at any point, should propogate upwards to be handled.
+/// API for handing stream states
+///
+/// A StreamManager is created with every established connection and maps/tracks the appropriate stream state for the connection.
+/// The struct contains many methods used to track and update the state of a given stream.
+///
+/// First, a frame checked for validity, 
+/// Next the frame is 'handled', updating the stream state as appropriate.
+/// TODO: If an error is triggered at any point, should propogate upwards to be handled.
 pub mod streammanager;
 mod utils;
 mod handlers;
 
-// API for handling stream priorities
-//
-// A PriorityManager is created with every established connection and queues streams id for processing based on their priority
-// Currently, the highest priority streams are those that are not dependant on others
-// By dequeueing and queueing stream id's for streams that are still active, the PriorityManager can help a client or server 
-// round robin through all active streams as a simple algorithm for multiplexing the connection.
+/// API for handling stream priorities
+///
+/// A PriorityManager is created with every established connection and queues streams id for processing based on their priority
+/// Currently, the highest priority streams are those that are not dependant on others
+/// By dequeueing and queueing stream id's for streams that are still active, the PriorityManager can help a client or server 
+/// round robin through all active streams as a simple algorithm for multiplexing the connection.
 pub mod prioritymanager;
 
 

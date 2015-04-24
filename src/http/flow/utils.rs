@@ -2,11 +2,11 @@ use super::super::frame::{RawFrame};
 use super::streammanager::{StreamManager};
 use super::StreamStates;
 
-// This helper function is used to check the validity of a inbound/outbound frame on a given stream
-//
-// First identifies if the frame is trying to open a stream with a valid stream id using check_valid_open_request (located in StreamManager)
-// Else, checks to see if it is a continuation frame using check_continue
-// If the first two are valid, does a final check for validity using check_<frame>
+/// This helper function is used to check the validity of a inbound/outbound frame on a given stream
+///
+/// First identifies if the frame is trying to open a stream with a valid stream id using check_valid_open_request (located in StreamManager)
+/// Else, checks to see if it is a continuation frame using check_continue
+/// If the first two are valid, does a final check for validity using check_<frame>
 pub fn check_valid_frame(stream_manager: &mut StreamManager, frame: &RawFrame, receiving: bool) -> bool {
 
     let frame_type = frame.header.1;
@@ -42,9 +42,9 @@ pub fn check_valid_frame(stream_manager: &mut StreamManager, frame: &RawFrame, r
     }
 }
 
-// Checks if the frame sent/recieved is a continuation frame if continuation is expected
-// Also checks if the current frame is a continuation frame and the stream is not expecting one
-// Currently, this check is run against all frames excluding headers and push promise frames
+/// Checks if the frame sent/recieved is a continuation frame if continuation is expected
+/// Also checks if the current frame is a continuation frame and the stream is not expecting one
+/// Currently, this check is run against all frames excluding headers and push promise frames
 pub fn check_continue (stream_manager: &mut StreamManager, frame: &RawFrame) -> bool {
 
     let frame_type = frame.header.1;
@@ -69,8 +69,8 @@ pub fn check_continue (stream_manager: &mut StreamManager, frame: &RawFrame) -> 
     }
 }
 
-// Checks if the frame sent/recieved is valid for a given state
-// This is the last of a series of checks against unexpected stream ids and the continuation status of a stream
+/// Checks if the frame sent/recieved is valid for a given state
+/// This is the last of a series of checks against unexpected stream ids and the continuation status of a stream
 fn check_state (receiving: bool, state: StreamStates, frame: &RawFrame) -> bool {
     // by the time check state is called, valid open request or valid continuation
     let stream_id = frame.header.3;
@@ -87,14 +87,14 @@ fn check_state (receiving: bool, state: StreamStates, frame: &RawFrame) -> bool 
 }
 
 
-// Helpers for each state, each state only allows a certain type of frames
-// This section effectively filters out invalid frames for a given stream state
+/// Helpers for each state, each state only allows a certain type of frames
+/// This section effectively filters out invalid frames for a given stream state
 
-// All streams start in the **idle** state. In this state, no frames have been exchanged.
-//
-// * Sending or receiving a HEADERS frame causes the stream to become "open".
-//
-// When the HEADERS frame contains the END_STREAM flags, then two state transitions happen.
+/// All streams start in the **idle** state. In this state, no frames have been exchanged.
+///
+/// * Sending or receiving a HEADERS frame causes the stream to become "open".
+///
+/// When the HEADERS frame contains the END_STREAM flags, then two state transitions happen.
 fn check_idle (receiving: bool, frame: &RawFrame) -> bool {
     let frame_type = frame.header.1;
     match frame_type {
@@ -108,15 +108,15 @@ fn check_idle (receiving: bool, frame: &RawFrame) -> bool {
     // must Protocol Err if stream id is 0x0
 }
 
-// A stream in the **reserved (local)** state is one that has been promised by sending a
-// PUSH_PROMISE frame.
-//
-// * The endpoint can send a HEADERS frame. This causes the stream to open in a "half closed
-//   (remote)" state.
-// * Either endpoint can send a RST_STREAM frame to cause the stream to become "closed". This
-//   releases the stream reservation.
-// * An endpoint may receive PRIORITY frame in this state.
-// * An endpoint MUST NOT send any other type of frame in this state.
+/// A stream in the **reserved (local)** state is one that has been promised by sending a
+/// PUSH_PROMISE frame.
+///
+/// * The endpoint can send a HEADERS frame. This causes the stream to open in a "half closed
+///   (remote)" state.
+/// * Either endpoint can send a RST_STREAM frame to cause the stream to become "closed". This
+///   releases the stream reservation.
+/// * An endpoint may receive PRIORITY frame in this state.
+/// * An endpoint MUST NOT send any other type of frame in this state.
 fn check_reserved_local (receiving: bool, frame: &RawFrame) -> bool {
     let frame_type = frame.header.1;
     // Reserved Local
@@ -133,13 +133,13 @@ fn check_reserved_local (receiving: bool, frame: &RawFrame) -> bool {
     }
 }
 
-// A stream in the **reserved (remote)** state has been reserved by a remote peer.
-//
-// * Either endpoint can send a RST_STREAM frame to cause the stream to become "closed". This
-//   releases the stream reservation.
-// * Receiving a HEADERS frame causes the stream to transition to "half closed (local)".
-// * An endpoint MAY send PRIORITY frames in this state to reprioritize the stream.
-// * Receiving any other type of frame MUST be treated as a stream error of type PROTOCOL_ERROR.
+/// A stream in the **reserved (remote)** state has been reserved by a remote peer.
+///
+/// * Either endpoint can send a RST_STREAM frame to cause the stream to become "closed". This
+///   releases the stream reservation.
+/// * Receiving a HEADERS frame causes the stream to transition to "half closed (local)".
+/// * An endpoint MAY send PRIORITY frames in this state to reprioritize the stream.
+/// * Receiving any other type of frame MUST be treated as a stream error of type PROTOCOL_ERROR.
 fn check_reserved_remote (receiving: bool, frame: &RawFrame) -> bool {
     let frame_type = frame.header.1;
     // Reserved Remote
@@ -154,15 +154,15 @@ fn check_reserved_remote (receiving: bool, frame: &RawFrame) -> bool {
     }
 }
 
-// The **open** state is where both peers can send frames. In this state, sending peers observe
-// advertised stream level flow control limits.
-//
-// * From this state either endpoint can send a frame with a END_STREAM flag set, which causes
-//   the stream to transition into one of the "half closed" states: an endpoint sending a
-//   END_STREAM flag causes the stream state to become "half closed (local)"; an endpoint
-//   receiving a END_STREAM flag causes the stream state to become "half closed (remote)".
-// * Either endpoint can send a RST_STREAM frame from this state, causing it to transition
-//   immediately to "closed".
+/// The **open** state is where both peers can send frames. In this state, sending peers observe
+/// advertised stream level flow control limits.
+///
+/// * From this state either endpoint can send a frame with a END_STREAM flag set, which causes
+///   the stream to transition into one of the "half closed" states: an endpoint sending a
+///   END_STREAM flag causes the stream state to become "half closed (local)"; an endpoint
+///   receiving a END_STREAM flag causes the stream state to become "half closed (remote)".
+/// * Either endpoint can send a RST_STREAM frame from this state, causing it to transition
+///   immediately to "closed".
 fn check_open (receiving: bool, frame: &RawFrame) -> bool {
     let frame_type = frame.header.1;
     //priority
@@ -178,12 +178,12 @@ fn check_open (receiving: bool, frame: &RawFrame) -> bool {
     }
 }
 
-// A stream that is **half closed (local)** cannot be used for sending frames.
-//
-// * A stream transitions from this state to "closed" when a frame that contains a END_STREAM
-//   flag is received, or when either peer sends a RST_STREAM frame.
-// * An endpoint MAY send or receive PRIORITY frames in this state to reprioritize the stream.
-// * WINDOW_UPDATE can be sent by a peer that has sent a frame bearing the END_STREAM flag.
+/// A stream that is **half closed (local)** cannot be used for sending frames.
+///
+/// * A stream transitions from this state to "closed" when a frame that contains a END_STREAM
+///   flag is received, or when either peer sends a RST_STREAM frame.
+/// * An endpoint MAY send or receive PRIORITY frames in this state to reprioritize the stream.
+/// * WINDOW_UPDATE can be sent by a peer that has sent a frame bearing the END_STREAM flag.
 fn check_half_closed_local (receiving: bool, frame: &RawFrame) -> bool {
     let frame_type = frame.header.1;
     let flag = frame.header.2;
@@ -199,16 +199,16 @@ fn check_half_closed_local (receiving: bool, frame: &RawFrame) -> bool {
     }
 }
 
-// A stream that is **half closed (remote)** is no longer being used by the peer to send frames.
-// In this state, an endpoint is no longer obligated to maintain a receiver flow control window
-// if it performs flow control.
-//
-// * If an endpoint receives additional frames for a stream that is in this state it MUST
-//   respond with a stream error of type STREAM_CLOSED.
-// * A stream can transition from this state to "closed" by sending a frame that contains a
-//   END_STREAM flag, or when either peer sends a RST_STREAM frame.
-// * An endpoint MAY send or receive PRIORITY frames in this state to reprioritize the stream.
-// * A receiver MAY receive a WINDOW_UPDATE frame on a "half closed (remote)" stream.
+/// A stream that is **half closed (remote)** is no longer being used by the peer to send frames.
+/// In this state, an endpoint is no longer obligated to maintain a receiver flow control window
+/// if it performs flow control.
+///
+/// * If an endpoint receives additional frames for a stream that is in this state it MUST
+///   respond with a stream error of type STREAM_CLOSED.
+/// * A stream can transition from this state to "closed" by sending a frame that contains a
+///   END_STREAM flag, or when either peer sends a RST_STREAM frame.
+/// * An endpoint MAY send or receive PRIORITY frames in this state to reprioritize the stream.
+/// * A receiver MAY receive a WINDOW_UPDATE frame on a "half closed (remote)" stream.
 fn check_half_closed_remote (receiving: bool, frame: &RawFrame) -> bool {
     let frame_type = frame.header.1;
     // Half Closed Remote (Writing)
@@ -224,26 +224,26 @@ fn check_half_closed_remote (receiving: bool, frame: &RawFrame) -> bool {
     }
 }
 
-// The **closed** state is the terminal state.
-//
-// * An endpoint MUST NOT send frames on a closed stream. An endpoint that receives a frame
-//   after receiving a RST_STREAM or a frame containing a END_STREAM flag on that stream MUST
-//   treat that as a stream error of type STREAM_CLOSED.
-// * WINDOW_UPDATE, PRIORITY or RST_STREAM frames can be received in this state for a short
-//   period after a frame containing an END_STREAM flag is sent.  Until the remote peer receives
-//   and processes the frame bearing the END_STREAM flag, it might send either frame type.
-//   Endpoints MUST ignore WINDOW_UPDATE frames received in this state, though endpoints MAY
-//   choose to treat WINDOW_UPDATE frames that arrive a significant time after sending
-//   END_STREAM as a connection error of type PROTOCOL_ERROR.
-// * If this state is reached as a result of sending a RST_STREAM frame, the peer that receives
-//   the RST_STREAM might have already sent - or enqueued for sending - frames on the stream
-//   that cannot be withdrawn. An endpoint that sends a RST_STREAM frame MUST ignore frames that
-//   it receives on closed streams after it has sent a RST_STREAM frame. An endpoint MAY choose
-//   to limit the period over which it ignores frames and treat frames that arrive after this
-//   time as being in error.
-// * An endpoint might receive a PUSH_PROMISE frame after it sends RST_STREAM. PUSH_PROMISE
-//   causes a stream to become "reserved". If promised streams are not desired, a RST_STREAM
-//   can be used to close any of those streams.
+/// The **closed** state is the terminal state.
+///
+/// * An endpoint MUST NOT send frames on a closed stream. An endpoint that receives a frame
+///   after receiving a RST_STREAM or a frame containing a END_STREAM flag on that stream MUST
+///   treat that as a stream error of type STREAM_CLOSED.
+/// * WINDOW_UPDATE, PRIORITY or RST_STREAM frames can be received in this state for a short
+///   period after a frame containing an END_STREAM flag is sent.  Until the remote peer receives
+///   and processes the frame bearing the END_STREAM flag, it might send either frame type.
+///   Endpoints MUST ignore WINDOW_UPDATE frames received in this state, though endpoints MAY
+///   choose to treat WINDOW_UPDATE frames that arrive a significant time after sending
+///   END_STREAM as a connection error of type PROTOCOL_ERROR.
+/// * If this state is reached as a result of sending a RST_STREAM frame, the peer that receives
+///   the RST_STREAM might have already sent - or enqueued for sending - frames on the stream
+///   that cannot be withdrawn. An endpoint that sends a RST_STREAM frame MUST ignore frames that
+///   it receives on closed streams after it has sent a RST_STREAM frame. An endpoint MAY choose
+///   to limit the period over which it ignores frames and treat frames that arrive after this
+///   time as being in error.
+/// * An endpoint might receive a PUSH_PROMISE frame after it sends RST_STREAM. PUSH_PROMISE
+///   causes a stream to become "reserved". If promised streams are not desired, a RST_STREAM
+///   can be used to close any of those streams.
 fn check_closed (receiving: bool, frame: &RawFrame) -> bool {
     // let frame_type = frame.header.1;
     // Closed

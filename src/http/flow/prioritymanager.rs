@@ -1,7 +1,7 @@
-// This module exposes an API for managing stream priorities and dependancies associated with a connection.
-// The current implementation effectively round robins all streams without dependancies. 
-// The user of the API must explicity requeue unfinished streams
-//
+/// This module exposes an API for managing stream priorities and dependancies associated with a connection.
+/// The current implementation effectively round robins all streams without dependancies. 
+/// The user of the API must explicity requeue unfinished streams
+
 //TODO: Implement weights
 use std::collections::{HashMap, HashSet, VecDeque};
 

@@ -1,14 +1,14 @@
-// This module contains helper methods used by StreamManager to update the state of a given stream.
-// note: could possibly be a good place for integrating logic for handing priority and parsing frames
+/// This module contains helper methods used by StreamManager to update the state of a given stream.
+/// note: could possibly be a good place for integrating logic for handing priority and parsing frames
 
 
 use super::super::frame::{RawFrame};
 use super::streammanager::StreamManager;
 use super::{StreamStates, Flags};
 
-// Handler for Header Frames
-//
-// Header frames transition from Idle to Open or Reserved to Half Closed if the stream was initiated by a Push Promise reservation
+/// Handler for Header Frames
+///
+/// Header frames transition from Idle to Open or Reserved to Half Closed if the stream was initiated by a Push Promise reservation
 pub fn handle_header (stream_manager: &mut StreamManager, receiving: bool, frame: &RawFrame) {
     let flag = frame.header.2;
     let stream_id = frame.header.3;
@@ -85,13 +85,13 @@ pub fn handle_header (stream_manager: &mut StreamManager, receiving: bool, frame
     };
 }
 
-// Handler for Push Promise
-//
-// If allowed, Push Promise frames are used to reserve streams for later use
-// The state transition triggered by a Push Promise depends on wether the frame was sent or recieved
-// and will transition the state of the stream to Reserved when the EndHeader flag is set (either on itself, or a following Continuation Frame)
-//
-// TODO: PP has very nuanced implementation details, take care that they are covered (eg ignoring/rejecting pp's)
+/// Handler for Push Promise
+///
+/// If allowed, Push Promise frames are used to reserve streams for later use
+/// The state transition triggered by a Push Promise depends on wether the frame was sent or recieved
+/// and will transition the state of the stream to Reserved when the EndHeader flag is set (either on itself, or a following Continuation Frame)
+///
+/// TODO: PP has very nuanced implementation details, take care that they are covered (eg ignoring/rejecting pp's)
 pub fn handle_push_promise (stream_manager: &mut StreamManager, receiving: bool, frame: &RawFrame) {
     let flag = frame.header.2;
     let stream_id = frame.header.3;
@@ -126,11 +126,11 @@ pub fn handle_push_promise (stream_manager: &mut StreamManager, receiving: bool,
 
 }
 
-// Continuation Frames
-//
-// Continuation frames can only follow push promise or headers frames.
-// They may carry a end headers flag which could trigger a transition to Reserved or Halfclosed states
-// depending on the type of frame it was first associated with (Push Promise, or Headers)
+/// Continuation Frames
+///
+/// Continuation frames can only follow push promise or headers frames.
+/// They may carry a end headers flag which could trigger a transition to Reserved or Halfclosed states
+/// depending on the type of frame it was first associated with (Push Promise, or Headers)
 pub fn handle_continuation (stream_manager: &mut StreamManager, receiving: bool, frame: &RawFrame) {
     let flag = frame.header.2;
     let stream_id = frame.header.3;
@@ -170,10 +170,10 @@ pub fn handle_continuation (stream_manager: &mut StreamManager, receiving: bool,
     };
 }
 
-// Data Frames
-//
-// Data frames are subject to flow control, 
-// half-closed streams transition to closed if the End Stream flag is set
+/// Data Frames
+///
+/// Data frames are subject to flow control, 
+/// half-closed streams transition to closed if the End Stream flag is set
 pub fn handle_data (stream_manager: &mut StreamManager, receiving: bool, frame: &RawFrame) {
     let flag = frame.header.2;
     let stream_id = frame.header.3;
@@ -188,26 +188,26 @@ pub fn handle_data (stream_manager: &mut StreamManager, receiving: bool, frame: 
 
 }
 
-// Priority Frames
-//
-// Updates the priority status fields of a given stream
-// TODO: Integrate with PriorityManager
+/// Priority Frames
+///
+/// Updates the priority status fields of a given stream
+/// TODO: Integrate with PriorityManager
 pub fn handle_priority (stream_manager: &mut StreamManager, receiving: bool, frame: &RawFrame) {
     //actually requires parsing the frame to extract relevant info
     //the streams it depends on
     //exclusive?
 }
 
-// Window Update Frames
-//
-// Modifes the flow control for the stream
+/// Window Update Frames
+///
+/// Modifes the flow control for the stream
 pub fn handle_window_update (stream_manager: &mut StreamManager, receiving: bool, frame: &RawFrame) {
     //also requires parsing the frame to extract information
 }
 
-// RST_STREAM
-//
-// Closes the stream
+/// RST_STREAM
+///
+/// Closes the stream
 pub fn handle_rst_stream (stream_manager: &mut StreamManager, receiving: bool, frame: &RawFrame) {
     // first check if stream is in hashmap
     let stream_id = frame.header.3;
