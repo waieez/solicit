@@ -1,6 +1,7 @@
 // This module exposes an API for managing stream priorities and dependancies associated with a connection.
-// The current implementation effectively round robins all streams without dependancies. Ignores weights.
+// The current implementation effectively round robins all streams without dependancies. 
 // The user of the API must explicity requeue unfinished streams
+//
 //TODO: Implement weights
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -8,35 +9,36 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 // Initialized with Headers Frame
 // Can be modified by sending priority frames
-
+//
 // Prioritized by marking stream as dependant on another.
-
+//
 // Stream w/ 0 deps stream dep of 0x0
-
+//
 // Default: dependant streams are unordered.
 // Exclusive: becomes sole dependancy of parent, adopt sibling streams as children.
-
+//
 // Child streams are only allocated resources when parent chain is closed.
-
+//
 // Dep Weighting weight between 1 and 256
 // siblings share proportional resources if progress on parent not able to be made.
-
+//
 // Reprioritization.
 // Dep streams move with parent if parent is reprioritized.
-
+// 
 // if moved with exclusive flag. new parent's children are adopted by moved dependency stream.
-
+// 
 // if moved to be dependant on child, child and parent switch roles. retains weight. (watchout for exclusive flag)
 
-
+// A node representing the a stream's dependancies
+//
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct StreamPriority {
-    //weight
     parent: u32, // id: 0 == no parent
     depth: u32,
     is_exclusive: bool, // set on the parent after exclusive child is set
     exclusive_child: u32, //defaults to 0, set only when set exclusive is called
     children: HashSet<u32>,
+    //todo:  weight
 }
 
 impl StreamPriority {
@@ -84,12 +86,13 @@ impl StreamPriority {
 
 }
 
+// An API for managing the priorities for a connection
+//
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct PriorityManager {
     streams: HashMap<u32, StreamPriority>,
     queue: VecDeque<u32> // note: could also consider a heap
 }
-
 
 impl PriorityManager {
     // creates an instance of a priority manager for the connection
@@ -358,7 +361,7 @@ mod tests {
         assert_eq!(queued, Some(id));
     }
 
-    // Correctly maps child to parent and parent to child
+    // Should correctly maps child to parent and parent to child
     #[test]
     fn test_set_dependant () {
         let mut priority_manager = PriorityManager::new();
@@ -379,7 +382,7 @@ mod tests {
         assert_eq!(child_set, true);
     }
 
-    // Does not push onto queue
+    // Nodes created as a dependancy should not enter the queue
     #[test]
     fn test_add_with_dependancy () {
         let mut priority_manager = PriorityManager::new();
@@ -399,7 +402,7 @@ mod tests {
         assert_eq!(exists, true);
     }
 
-    // Gets the first indpendant stream id
+    // Should get the first independant stream id
     #[test]
     fn test_get () {
         let mut priority_manager = PriorityManager::new();
@@ -416,7 +419,7 @@ mod tests {
         assert_eq!(empty, true);
     }
 
-    // remaps children to parent if exists
+    // Should remap children to parent if exists
     #[test]
     fn test_retire () {
         let mut priority_manager = PriorityManager::new();
@@ -450,6 +453,7 @@ mod tests {
         assert_eq!(new_depth, 2);
     }
 
+    // Should remap siblings as children of exclusive child
     #[test]
     fn test_set_exclusive () {
         let mut priority_manager = PriorityManager::new();
@@ -487,6 +491,7 @@ mod tests {
         assert_eq!(new_depth, 4);
     }
 
+    // Should allow arbitrary reprioritization
     #[test]
     fn test_deny_cycles () {
         let mut priority_manager = PriorityManager::new();

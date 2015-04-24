@@ -1,12 +1,9 @@
 //! This module implements stream state management to help discover connection errors before an expensive parse is made.
 //! It manages the state of the streams associated with the connection
 
-// TODO: Implement Control Flow, Priority
+// TODO: Implement Control Flow
 // TODO: Refactor using try!
 // TODO: return errors where appropriate
-
-//use super::super::{HttpError, HttpResult, StreamId};
-//use super::super::frame::{RawFrame, FrameHeader, unpack_header};
 
 use std::collections::HashMap;
 use super::super::frame::{RawFrame};
@@ -15,23 +12,23 @@ use super::utils;
 use super::handlers;
 
 pub struct StreamManager {
-    // Stream Concurrency
+    last_server_id: u32,
+    last_client_id: u32,
+    max_concurrent_streams: u32, // set by settings frame
+    streams: HashMap<u32, StreamStatus>,
+    is_server: bool, // todo: use enum instead of boolean?
+    // notes: Stream Concurrency
     // Limit the max streams a peer can open using Settings Frame
     // Open/Half Closed count towards max. reserved don't
     // if endpoint recieves HEADERS frame that goes over max, PROTOCOL_ERROR or REFUSED_STREAM.
     // Can reduce max streams. but must either close streams or wait for them to close.
-    last_server_id: u32,
-    last_client_id: u32,
-    max_concurrent_streams: u32, //config?
-    streams: HashMap<u32, StreamStatus>,
-    is_server: bool, // use enum instead of boolean?
 }
 
-// Perhaps could be used as an abstraction on top of the connection
-// For now is used to quickly check/manage the state of the stream
+// Exposes an API to quickly check/manage the state of the stream
+// Note: Perhaps could be used as an API on top of the connection
 impl StreamManager {
 
-    // Configures the connections' settings for all streams
+    // Configures the connection's settings for all streams
     pub fn new (max_streams: u32, is_server: bool) -> StreamManager {
         StreamManager {
             last_client_id: 0, //TODO: Figure out proper defaults
@@ -41,7 +38,6 @@ impl StreamManager {
             is_server: is_server
             //enable push?
         }
-        //should perhaps initialize the first stream to be open as well.
     }
 
     // helper method to set the state of a stream.
@@ -51,7 +47,7 @@ impl StreamManager {
                 stream.set_state(state);
             },
             None => {
-                () // should error
+                () // note: should error
             },
         };
     }
@@ -61,8 +57,8 @@ impl StreamManager {
         self.streams.get_mut(&stream_id)
     }
 
-    // todo: refactor open, open_idle, etc signatures to match recieving, stream_id
-    pub fn open_idle (&mut self, stream_id: u32, receiving: bool) {
+    // registers a stream as idle
+    pub fn open_idle (&mut self, receiving: bool, stream_id: u32) {
         //clients can only open odd streams, servers even.
         //potentially create streams using this api.
         if self.check_valid_open_request(stream_id, receiving) { // checked before already in check_valid_frame
@@ -77,7 +73,7 @@ impl StreamManager {
     }
 
     // API to manually set the state of a stream to be open (if stream id supplied is valid)
-    pub fn open (&mut self, stream_id: u32, receiving: bool) {// maybe defaults to false?
+    pub fn open (&mut self, stream_id: u32, receiving: bool) {
 
         //TODO: Check for Max Concurrency
 
@@ -89,7 +85,7 @@ impl StreamManager {
         // Exhaustively ensures the stream has not already been set
         // Checks if stream_id provided is valid
         if not_set {
-            self.open_idle(stream_id, receiving);
+            self.open_idle(receiving, stream_id);
         };
 
         // And only opens the stream if it was originally set to idle
@@ -99,8 +95,8 @@ impl StreamManager {
         // else err, tried to manually open a stream that has transitioned
     }
     
-    // Tests if the direction of the inbound/outbound frame is consistent with, the id of the stream
-    // Leaving this method in stream manager keeps many of the stream manager's fields private
+    // Tests if the direction of the inbound/outbound frame is consistent with the id of the stream
+    // Note: Leaving this method in stream manager keeps many of the stream manager's fields private
     pub fn check_valid_open_request (&mut self, stream_id: u32, receiving: bool) -> bool {
         match receiving {
             //RECV
@@ -141,16 +137,14 @@ impl StreamManager {
     // If validated, returns true. Else, returns the error thrown during validation.
     // Also updates the state of the stream implied by the recieved frames.
     pub fn handle_frame (&mut self, receiving: bool, frame: &RawFrame) -> bool {
-        // note: handle frame could be moved to handlers. more ergonomic here
-        // What happens if the raw frame to be processed errors? Connection Error and Close Stream?
+        // note: handle frame could be moved to handlers, but is more ergonomic here
+        // Also, what happens if the raw frame to be processed errors? Connection Error and Close Stream?
 
-        // let length = frame.header.0;
         let frame_type = frame.header.1;
-        // let flag = frame.header.2;
         let stream_id = frame.header.3;
 
-        // If the frame is valid, (new stream?, continuation?, otherwise still valid?)
-        let is_valid = utils::check_valid_frame(self, &frame, receiving); //receiving?
+        // If the frame is valid (is it a new stream?, a continuation?, is the frame allowed in this state?)
+        let is_valid = utils::check_valid_frame(self, &frame, receiving);
 
         if !is_valid {
             //return an error
@@ -158,11 +152,8 @@ impl StreamManager {
             debug!("failed initial checks, terminating... stream id: {:?}, frame type: {:?}, ", stream_id, frame_type);
             false
         } else {
-            // state transition, by peer
-            // self.transition_state(&frame, false);
-
-            // process frame?
-            // return a processed frame?
+            // Hands frame to appropriate handler which will trigger state changes,
+            // note: could be used directly to parse frames as well in a deeper integration
             match frame_type {
                 //Data
                 0x0 => {
@@ -182,6 +173,7 @@ impl StreamManager {
                 },
                 //Setting
                 0x4 => {
+                    //TODO: Implement/Integrate Handlers
                 },
                 //PushPromise
                 0x5 => {
@@ -221,20 +213,12 @@ mod tests {
         StreamManager,
     };
 
-    //TODO: implement flag checks for stream states using bitmasking
-    // a raw frame could have many flags set
-    // Sets the given flag for the frame.
-    // fn set_flag(&mut self, flag: HeadersFlag) {
-    //     self.flags |= flag.bitmask();
-    // }
-
-    // BeforeEach?
+    // todo: use method to set flags indea of hardcoding
 
     /// Builds a test frame of the given type with the given header and
     /// payload, by using the `Frame::from_raw` method.
     pub fn build_test_rawframe (stream_id: u32, frame_type: &str, flags: &str) -> RawFrame {
         let data = b"123";
-        // (length, frame_type, flags, stream_id)
 
         let _flag = {
             match flags {
@@ -260,6 +244,7 @@ mod tests {
             }
         };
 
+        // (length, frame_type, flags, stream_id)
         let header = (data.len() as u32, _type, _flag, stream_id);
         let buf = {
             let mut buf = Vec::new();
@@ -270,14 +255,7 @@ mod tests {
         RawFrame::from_buf(&buf).unwrap()
     }
 
-    // pub enum Flags {
-    //     EndStream = 0x1,
-    //     EndHeaders = 0x4,
-    //     Padded = 0x8,
-    //     Priority = 0x20,
-    // }
-
-    //tests for incoming flags
+    // Should return true if a given flag has been set
     #[test]
     fn test_bitmask_flag () {
         let check_pass = Flags::EndStream.is_set(0x1);
@@ -285,7 +263,8 @@ mod tests {
     }
 
     // Tests for the external API of StreamManager
-    // Tests that check_valid allows the appropriate frames through, handlers are tested individually
+    //
+    // Check_valid should allow the appropriate frames through (Handlers are tested individually)
     #[test]
     fn test_handle_frame () {
         let stream_id = 2;
@@ -294,24 +273,28 @@ mod tests {
         let raw_continue = build_test_rawframe(stream_id, "continuation", "endheaders");
 
         let check_pass1 = stream_manager.handle_frame(true, &raw_header);
+        //should be status: open, expect continue: true, should end: true, but is covered by specific handler
         assert_eq!(check_pass1, true);
-        //should be status: open, expect continue: true, should end: true
 
-        println!("starting second test...............");
         let check_pass2 = stream_manager.handle_frame(true, &raw_continue);
+        //should be status: open, expect continue: false, should end: true, but is covered by specific handler
         assert_eq!(check_pass2, true);
     }
 
-    // Tests for Opening a stream
+    // Tests for Opening and closing stream by sending/receiving frames
+    //
+    // Calling open should open a new stream
     #[test]
     fn test_open_stream () {
         let stream_id = 1;
         let mut stream_manager = StreamManager::new(4, false);
 
+        //opening a stream locally as a client
         stream_manager.open(stream_id, false);
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Open);
     }
 
+    // Handling a recived headers frame should correctly open a new stream
     #[test]
     fn test_implicit_open () {
         let stream_id = 2;
@@ -322,7 +305,7 @@ mod tests {
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Open);
     }
 
-    // Calling close closes a given stream
+    // Calling close should close a given stream
     #[test]
     fn test_close_stream () {
         let stream_id = 1;
@@ -333,7 +316,6 @@ mod tests {
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
     }
 
-    //TODO: move/refactor test
     // A new stream defaults to not expect continuation, receiving a continuation frame should immediately be rejected
     #[test]
     fn test_check_continue () {
@@ -345,7 +327,7 @@ mod tests {
         assert_eq!(check_fail, false);
     }
 
-    // Tests check_valid_frame rejects inappropriate frames for a given stream.
+    // Check_valid_frame should reject inappropriate frames for a given stream.
     // A new open stream should not immediately accept continuation frames unless the expect_continuation is set.
     #[test]
     fn test_open_with_continuation () {
@@ -367,8 +349,10 @@ mod tests {
         assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
     }
 
-    //Tests for handlers
-    // Receiving a header with out a set flag 'opens' a new stream. The stream now expects continuation frames
+    // Tests for handlers
+    //
+    // Receiving a header 'opens' a new stream. The stream now expects continuation frames if the end header flag is not set
+    // Aslo, the tracker for created stream ids should update
     #[test]
     fn test_handle_header_continue () {
         let stream_id = 2;
@@ -387,7 +371,7 @@ mod tests {
         assert_eq!(updated_server_id, 2);
     }
 
-    // Receiving a header with the end stream flag transitions the stream to HalfClosedRemote
+    // Receiving a header with the end stream flag should transition the stream to HalfClosedRemote
     #[test]
     fn test_handle_header_end_stream () {
         let stream_id = 2;
@@ -467,9 +451,9 @@ mod tests {
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
     }
 
-    //Tests for flow control
+    //Tests for integrated transitions from Open to Closed
     //todo: refactor tests to be less redudant while maintaining integration garuntees
-
+    //
     // Idle -> Open -> Closed
     #[test]
     fn test_simple_integration () {
@@ -491,7 +475,7 @@ mod tests {
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
     }
 
-    // Idle -> ResRemote -> HalfClosed Local -> Closed
+    // Idle -> ResRemote -> HalfClosed Local -> Closed (without continuation)
     #[test]
     fn test_simple_push_promise_integration () {
         let stream_id = 2;
@@ -516,6 +500,7 @@ mod tests {
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
     }
 
+    // Idle -> ResRemote -> HalfClosed Local -> Closed (with continuation)
     #[test]
     fn test_recv_push_promise_integration_with_continuation () {
         let stream_id = 2;
@@ -549,7 +534,7 @@ mod tests {
         assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
     }
 
-    //mirrored test for sending
+    // Mirored test for Sending frames
     #[test]
     fn test_send_push_promise_integration_with_continuation () {
         let stream_id = 1;
@@ -582,8 +567,6 @@ mod tests {
         assert_eq!(stream_manager.streams[&stream_id].state, StreamStates::Closed);
         assert_eq!(stream_manager.streams[&stream_id].expects_continuation, false);
     }
-
-    // Test for Data Frames
 
     // Connection Errors should close a stream
 }

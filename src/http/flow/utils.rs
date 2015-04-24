@@ -2,26 +2,25 @@ use super::super::frame::{RawFrame};
 use super::streammanager::{StreamManager};
 use super::StreamStates;
 
-// Checks if the incoming frame is valid for the particular stream.
-// First identifies if incoming frame is associated with a stream
-// If not and is a valid header or push promise, opens the stream in the appropriate state
-// Else, checks to see if it is a continuation frame
-// If not, does a final check for validity
+// This helper function is used to check the validity of a inbound/outbound frame on a given stream
+//
+// First identifies if the frame is trying to open a stream with a valid stream id using check_valid_open_request (located in StreamManager)
+// Else, checks to see if it is a continuation frame using check_continue
+// If the first two are valid, does a final check for validity using check_<frame>
 pub fn check_valid_frame(stream_manager: &mut StreamManager, frame: &RawFrame, receiving: bool) -> bool {
 
     let frame_type = frame.header.1;
     let stream_id = frame.header.3;
 
-    // Check to see if this id is valid and it is the beginning of a stream.
     let valid_so_far = match frame_type {
-        // If Header or Push Promise, peer attempting to open/reserve a new stream
-        // Stream id's must be increasing, respond to unexpected id's with PROTOCOL_ERROR
-        // currently check_valid_frame is only used on recieve
         0x1 => {
-            //todo refactor:
+            //todo: refactor uncessary step?
             true // handled by header handler
         },
         0x5 => {
+            // Push Promise, peer is attempting to open/reserve a new stream
+            // Check to see if this id is valid and it is the beginning of a stream.
+            // Stream id must be increasing, respond to unexpected id's with PROTOCOL_ERROR
             stream_manager.check_valid_open_request(stream_id, receiving)
         },
         _ => {
@@ -29,13 +28,13 @@ pub fn check_valid_frame(stream_manager: &mut StreamManager, frame: &RawFrame, r
         }
     };
 
-    // by the time check state is called, valid open request or valid continuation
-
-    let state = match stream_manager.get_stream_status(&stream_id) { //todo: match states based on receiving
+    // returns a state that is either Idle if this is a new stream, or the actual state of the stream.
+    let state = match stream_manager.get_stream_status(&stream_id) {
         None => StreamStates::Idle,
-        Some(status) => status.state.clone(),
+        Some(status) => status.state.clone(), // note: borrow checker restricts moving the state, refactor?
     };
 
+    // by the time check state is called, it is either an open valid open request or matches continuation expectations
     if valid_so_far {
         check_state(receiving, state, &frame)
     } else {

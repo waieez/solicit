@@ -1,12 +1,15 @@
+// This module expands Solicit's ability to track and manage stream states and priorities.
+
 // A "stream" is an independent, bi-directional sequence of frames exchanged between the client and server within an HTTP/2 connection. 
 // Streams have several important characteristics:
 // A single HTTP/2 connection can contain multiple concurrently open streams, with either endpoint interleaving frames from multiple streams.
 // Streams can be established and used unilaterally or shared by either the client or server.
 // Streams can be closed by either endpoint.
 // The order in which frames are sent on a stream is significant. 
-//     Recipients process frames in the order they are received. In particular, the order of HEADERS, and DATA frames is semantically significant.
+// Recipients process frames in the order they are received. In particular, the order of HEADERS, and DATA frames is semantically significant.
 // Streams are identified by an integer. Stream identifiers are assigned to streams by the endpoint initiating the stream.
 
+// The following diagram demonstrates the state transitions triggered by sending and recieving different frames when in a particular state.
 
 // STREAM STATES
 
@@ -47,44 +50,28 @@
 //    ES: END_STREAM flag
 //    R:  RST_STREAM frame
 
-// Flow Control Scheme
-// Scheme Ensures stream on same conn do not destrctively interfere.
-// Used for individual streams and for connection as a whole.
-// Req: Window Update
-
-// Flow Control Principles
-
-// 1. Flow control is specific to a connection. Both types of flow control are between the endpoints of a single hop, and not over the entire end-to-end path.
-// 2. Flow control is based on window update frames. Receivers advertise how many octets they are prepared to receive on a stream and for the entire connection. 
-//     This is a credit-based scheme.
-// 3. Flow control is directional with overall control provided by the receiver. 
-//     A receiver MAY choose to set any window size that it desires for each stream and for the entire connection.
-//     A sender MUST respect flow control limits imposed by a receiver.
-//     Clients, servers and intermediaries all independently advertise their flow control window as a receiver
-//       and abide by the flow control limits set by their peer when sending.
-// 4. The initial value for the flow control window is 65,535 octets for both new streams and the overall connection.
-// 5. Only DATA Frames are subject to flow control. Ensures important control frames aren't blocked by flow control
-// 6. Flow control cannot be disabled.
-// 7. The HTTP/2 Spec defines the format/semantics of WINDOW_UPDATE. When it is sent, what values, etc up to implementation.
-
-// Implementations are also responsible for managing how requests and responses are sent based on priority;
-// choosing how to avoid head of line blocking for requests;
-// and managing the creation of new streams.
-// Algorithm choices for these could interact with any flow control algorithm.
-
-
-// Appropriate Use of Flow Control
-//  If not required, advertise a flow control window of the maximum size (2^31-1)
-//  Flow control to limit memory use. However lead to suboptimal use of network resources.
-
-
-// Prioritization State Management
-// ???
+// API for handing stream states
+//
+// A StreamManager is created with every established connection and maps/tracks the appropriate stream state for the connection.
+// The struct contains many methods used to track and update the state of a given stream.
+//
+// First, a frame checked for validity, 
+// Next the frame is 'handled', updating the stream state as appropriate.
+// TODO: If an error is triggered at any point, should propogate upwards to be handled.
 pub mod streammanager;
-pub mod prioritymanager;
 mod utils;
 mod handlers;
 
+// API for handling stream priorities
+//
+// A PriorityManager is created with every established connection and queues streams id for processing based on their priority
+// Currently, the highest priority streams are those that are not dependant on others
+// By dequeueing and queueing stream id's for streams that are still active, the PriorityManager can help a client or server 
+// round robin through all active streams as a simple algorithm for multiplexing the connection.
+pub mod prioritymanager;
+
+
+// An Enum for the different possible states a stream can be in
 #[derive(Hash, Eq, PartialEq, Debug, Clone)]
 pub enum StreamStates {
     Idle,
@@ -96,6 +83,7 @@ pub enum StreamStates {
     HalfClosedRemote,
 }
 
+// The different flags that could be set on a given frame
 pub enum Flags {
     EndStream = 0x1,
     EndHeaders = 0x4,
@@ -113,6 +101,7 @@ impl Flags {
     }
 }
 
+
 #[derive(Hash, Eq, PartialEq, Debug)]
 pub struct StreamStatus {
     pub state: StreamStates,
@@ -122,8 +111,6 @@ pub struct StreamStatus {
     pub expects_continuation: bool,
     should_end: bool,
     is_reserved: bool,
-    //children: Vec<u32>?
-    //window_size:?
 }
 
 
@@ -145,6 +132,7 @@ impl StreamStatus {
         self
     }
 
+    //TODO: Integrate with PriorityManager?
     fn set_priority (&mut self, priority: Option<u32>) -> &mut StreamStatus {
         self.priority = priority;
         self
@@ -178,3 +166,41 @@ impl StreamStatus {
         self
     }
 }
+
+
+//TODO:
+
+// Flow Control
+// Requires Window Update Frame
+
+// Notes on flow control:
+
+// Flow Control Scheme
+// Scheme Ensures stream on same conn do not destrctively interfere.
+// Used for individual streams and for connection as a whole.
+// Req: Window Update
+
+// Flow Control Principles
+
+// 1. Flow control is specific to a connection. Both types of flow control are between the endpoints of a single hop, and not over the entire end-to-end path.
+// 2. Flow control is based on window update frames. Receivers advertise how many octets they are prepared to receive on a stream and for the entire connection. 
+//     This is a credit-based scheme.
+// 3. Flow control is directional with overall control provided by the receiver. 
+//     A receiver MAY choose to set any window size that it desires for each stream and for the entire connection.
+//     A sender MUST respect flow control limits imposed by a receiver.
+//     Clients, servers and intermediaries all independently advertise their flow control window as a receiver
+//       and abide by the flow control limits set by their peer when sending.
+// 4. The initial value for the flow control window is 65,535 octets for both new streams and the overall connection.
+// 5. Only DATA Frames are subject to flow control. Ensures important control frames aren't blocked by flow control
+// 6. Flow control cannot be disabled.
+// 7. The HTTP/2 Spec defines the format/semantics of WINDOW_UPDATE. When it is sent, what values, etc up to implementation.
+
+// Implementations are also responsible for managing how requests and responses are sent based on priority;
+// choosing how to avoid head of line blocking for requests;
+// and managing the creation of new streams.
+// Algorithm choices for these could interact with any flow control algorithm.
+
+
+// Appropriate Use of Flow Control
+//  If not required, advertise a flow control window of the maximum size (2^31-1)
+//  Flow control to limit memory use. However lead to suboptimal use of network resources.
